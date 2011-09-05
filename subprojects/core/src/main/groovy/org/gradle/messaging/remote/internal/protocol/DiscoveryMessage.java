@@ -15,13 +15,21 @@
  */
 package org.gradle.messaging.remote.internal.protocol;
 
+import org.gradle.messaging.remote.internal.MessageOriginator;
+
 import java.io.Serializable;
 
 public class DiscoveryMessage implements Serializable {
+    private final MessageOriginator originator;
     private final String group;
 
-    public DiscoveryMessage(String group) {
+    public DiscoveryMessage(MessageOriginator originator, String group) {
+        this.originator = originator;
         this.group = group;
+    }
+
+    public MessageOriginator getOriginator() {
+        return originator;
     }
 
     public String getGroup() {
@@ -38,7 +46,7 @@ public class DiscoveryMessage implements Serializable {
         }
 
         DiscoveryMessage other = (DiscoveryMessage) o;
-        return group.equals(other.group);
+        return originator.equals(other.originator) && group.equals(other.group);
     }
 
     @Override

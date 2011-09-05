@@ -13,9 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
-
 package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.GradleDistribution
@@ -46,6 +43,16 @@ class DynamicObjectIntegrationTest {
                 "task testTask << {",
                 "  new Reporter().checkProperties(project)",
                 "}",
+                "assert 'root' == rootProperty",
+                "assert 'root' == property('rootProperty')",
+                "assert 'root' == properties.rootProperty",
+                "assert 'child' == childProperty",
+                "assert 'child' == property('childProperty')",
+                "assert 'child' == properties.childProperty",
+                "assert 'shared' == sharedProperty",
+                "assert 'shared' == property('sharedProperty')",
+                "assert 'shared' == properties.sharedProperty",
+                "assert 'convention' == conventionProperty",
                 // Use a separate class, to isolate Project from the script
                 "class Reporter {",
                 "  def checkProperties(object) {",
@@ -97,51 +104,103 @@ class DynamicObjectIntegrationTest {
     }
 
     @Test
+    public void canAddMixinsToProject() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+convention.plugins.test = new ConventionBean()
+
+assert conventionProperty == 'convention'
+assert conventionMethod('value') == '[value]'
+
+class ConventionBean {
+    def getConventionProperty() { 'convention' }
+    def conventionMethod(String value) { "[$value]" }
+}
+'''
+
+        executer.inDirectory(testDir).run();
+    }
+
+    @Test
+    public void canAddExtensionsToProject() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+extensions.test = new ExtensionBean()
+
+assert test instanceof ExtensionBean
+test { it ->
+    assert it == project.test
+}
+class ExtensionBean {
+}
+'''
+
+        executer.inDirectory(testDir).run();
+    }
+
+    @Test
+    public void canAddPropertiesToProjectUsingGradlePropertiesFile() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file("settings.gradle").writelns("include 'child'");
+        testDir.file("gradle.properties") << '''
+global=some value
+'''
+        testDir.file("build.gradle") << '''
+assert 'some value' == global
+assert hasProperty('global')
+assert 'some value' == property('global')
+assert 'some value' == properties.global
+assert 'some value' == project.global
+assert project.hasProperty('global')
+assert 'some value' == project.property('global')
+assert 'some value' == project.properties.global
+'''
+        testDir.file("child/gradle.properties") << '''
+global=overridden value
+'''
+        testDir.file("child/build.gradle") << '''
+assert 'overridden value' == global
+'''
+
+        executer.inDirectory(testDir).run();
+    }
+
+    @Test
     public void canAddDynamicPropertiesToCoreDomainObjects() {
         TestFile testDir = dist.getTestDir();
         testDir.file('build.gradle') << '''
-            class Extension { def doStuff() { 'method' } }
             class GroovyTask extends DefaultTask { }
 
             task defaultTask {
                 custom = 'value'
-                convention.plugins.custom = new Extension()
             }
             task javaTask(type: Copy) {
                 custom = 'value'
-                convention.plugins.custom = new Extension()
             }
             task groovyTask(type: GroovyTask) {
                 custom = 'value'
-                convention.plugins.custom = new Extension()
             }
             configurations {
                 test {
                     custom = 'value'
-                    convention.plugins.custom = new Extension()
                 }
             }
             dependencies {
                 test('::name:') {
                     custom = 'value';
-                    convention.plugins.custom = new Extension()
                 }
                 test(module('::other')) {
                     custom = 'value';
-                    convention.plugins.custom = new Extension()
                 }
                 test(project(':')) {
                     custom = 'value';
-                    convention.plugins.custom = new Extension()
                 }
                 test(files('src')) {
                     custom = 'value';
-                    convention.plugins.custom = new Extension()
                 }
             }
             repositories {
                 custom = 'repository'
-                convention.plugins.custom = new Extension()
             }
             defaultTask.custom = 'another value'
             javaTask.custom = 'another value'
@@ -149,12 +208,10 @@ class DynamicObjectIntegrationTest {
             assert !project.hasProperty('custom')
             assert defaultTask.hasProperty('custom')
             assert defaultTask.custom == 'another value'
-            assert defaultTask.doStuff() == 'method'
-            assert javaTask.doStuff() == 'method'
-            assert groovyTask.doStuff() == 'method'
+            assert javaTask.custom == 'another value'
+            assert groovyTask.custom == 'another value'
             assert configurations.test.hasProperty('custom')
             assert configurations.test.custom == 'value'
-            assert configurations.test.doStuff() == 'method'
             configurations.test.dependencies.each {
                 assert it.hasProperty('custom')
                 assert it.custom == 'value'
@@ -162,9 +219,61 @@ class DynamicObjectIntegrationTest {
             }
             assert repositories.hasProperty('custom')
             assert repositories.custom == 'repository'
-            assert repositories.doStuff() == 'method'
             repositories {
                 assert custom == 'repository'
+            }
+'''
+
+        executer.inDirectory(testDir).withTasks("defaultTask").run();
+    }
+
+    @Test
+    public void canAddMixInsToCoreDomainObjects() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+            class Extension { def doStuff() { 'method' } }
+            class GroovyTask extends DefaultTask { }
+
+            task defaultTask {
+                convention.plugins.custom = new Extension()
+            }
+            task javaTask(type: Copy) {
+                convention.plugins.custom = new Extension()
+            }
+            task groovyTask(type: GroovyTask) {
+                convention.plugins.custom = new Extension()
+            }
+            configurations {
+                test {
+                    convention.plugins.custom = new Extension()
+                }
+            }
+            dependencies {
+                test('::name:') {
+                    convention.plugins.custom = new Extension()
+                }
+                test(module('::other')) {
+                    convention.plugins.custom = new Extension()
+                }
+                test(project(':')) {
+                    convention.plugins.custom = new Extension()
+                }
+                test(files('src')) {
+                    convention.plugins.custom = new Extension()
+                }
+            }
+            repositories {
+                convention.plugins.custom = new Extension()
+            }
+            assert defaultTask.doStuff() == 'method'
+            assert javaTask.doStuff() == 'method'
+            assert groovyTask.doStuff() == 'method'
+            assert configurations.test.doStuff() == 'method'
+            configurations.test.dependencies.each {
+                assert it.doStuff() == 'method'
+            }
+            assert repositories.doStuff() == 'method'
+            repositories {
                 assert doStuff() == 'method'
             }
 '''
@@ -172,6 +281,77 @@ class DynamicObjectIntegrationTest {
         executer.inDirectory(testDir).withTasks("defaultTask").run();
     }
 
+    @Test
+    public void canAddExtensionsToCoreDomainObjects() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+            class Extension { def doStuff() { 'method' } }
+            class GroovyTask extends DefaultTask { }
+
+            task defaultTask {
+                extensions.test = new Extension()
+            }
+            task javaTask(type: Copy) {
+                extensions.test = new Extension()
+            }
+            task groovyTask(type: GroovyTask) {
+                extensions.test = new Extension()
+            }
+            configurations {
+                test {
+                    extensions.test = new Extension()
+                }
+            }
+            dependencies {
+                test('::name:') {
+                    extensions.test = new Extension()
+                }
+                test(module('::other')) {
+                    extensions.test = new Extension()
+                }
+                test(project(':')) {
+                    extensions.test = new Extension()
+                }
+                test(files('src')) {
+                    extensions.test = new Extension()
+                }
+            }
+            repositories {
+                extensions.test = new Extension()
+            }
+            assert defaultTask.test instanceof Extension
+            assert javaTask.test instanceof Extension
+            assert groovyTask.test instanceof Extension
+            assert configurations.test.test instanceof Extension
+            configurations.test.dependencies.each {
+                assert it.test instanceof Extension
+            }
+            assert repositories.test instanceof Extension
+            repositories {
+                assert test instanceof Extension
+            }
+'''
+
+        executer.inDirectory(testDir).withTasks("defaultTask").run();
+    }
+
+    @Test
+    public void mixesDslMethodsIntoCoreDomainObjects() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+            class GroovyTask extends DefaultTask {
+                def String prop
+            }
+            tasks.withType(GroovyTask) { conventionMapping.prop = { '[default]' } }
+            task test(type: GroovyTask)
+            assert test.prop == '[default]'
+            test { prop 'value' }
+            assert test.prop == 'value'
+'''
+
+        executer.inDirectory(testDir).withTasks("test").run();
+    }
+    
     @Test
     public void canInjectMethodsFromParentProject() {
         TestFile testDir = dist.getTestDir();

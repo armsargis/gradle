@@ -74,7 +74,7 @@ class EclipseWtpIntegrationTest extends AbstractEclipseIntegrationTest {
     void allProjectDependenciesOfWebProjectAreAddedAsRuntimeDependencies() {
         prepareWebProject()
 
-        def projectModules = parseComponentFile(project: "web")
+        def projectModules = parseComponentFile(project: "web", print: true)
 
 		assert getDeployName(projectModules) == "web"
 		assert getHandleFilenames(projectModules) == ["java1", "java2", "groovy", "myartifact-1.0.jar", "myartifactdep-1.0.jar"] as Set
@@ -126,7 +126,7 @@ apply plugin: "eclipse-wtp"
 apply plugin: "war"
 
 repositories {
-    mavenRepo(name: "repo", urls: "${repoDir.toURI()}")
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -144,7 +144,7 @@ apply plugin: "eclipse-wtp"
 apply plugin: "java"
 
 repositories {
-    mavenRepo(name: "repo", urls: "${repoDir.toURI()}")
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -161,7 +161,7 @@ apply plugin: "eclipse-wtp"
 apply plugin: "java"
 
 repositories {
-    mavenRepo(name: "repo", urls: "${repoDir.toURI()}")
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {

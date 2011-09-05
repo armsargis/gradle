@@ -17,7 +17,7 @@ package org.gradle.api.internal;
 
 public class GroovySourceGenerationBackedClassGeneratorTest extends AbstractClassGeneratorTest {
     @Override
-    protected ClassGenerator createGenerator() {
+    protected GroovySourceGenerationBackedClassGenerator createGenerator() {
         return new GroovySourceGenerationBackedClassGenerator();
     }
 }

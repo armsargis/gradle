@@ -15,27 +15,20 @@
  */
 package org.gradle.groovy.scripts;
 
-import org.gradle.cache.CacheRepository;
-import org.gradle.cache.PersistentCache;
-import org.gradle.util.HashUtil;
-import org.gradle.util.Instantiator;
-
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
+import org.gradle.api.internal.DirectInstantiator;
+import org.gradle.api.internal.Instantiator;
+import org.gradle.groovy.scripts.internal.ScriptClassCompiler;
+import org.gradle.groovy.scripts.internal.ScriptRunnerFactory;
 
 /**
  * @author Hans Dockter
  */
 public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
-    private final ScriptCompilationHandler scriptCompilationHandler;
-    private final CacheRepository cacheRepository;
     private final ScriptRunnerFactory scriptRunnerFactory;
+    private final ScriptClassCompiler scriptClassCompiler;
 
-    public DefaultScriptCompilerFactory(ScriptCompilationHandler scriptCompilationHandler,
-                                        ScriptRunnerFactory scriptRunnerFactory, CacheRepository cacheRepository) {
-        this.scriptCompilationHandler = scriptCompilationHandler;
-        this.cacheRepository = cacheRepository;
+    public DefaultScriptCompilerFactory(ScriptClassCompiler scriptClassCompiler, ScriptRunnerFactory scriptRunnerFactory) {
+        this.scriptClassCompiler = scriptClassCompiler;
         this.scriptRunnerFactory = scriptRunnerFactory;
     }
 
@@ -47,6 +40,7 @@ public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
         private final ScriptSource source;
         private ClassLoader classloader;
         private Transformer transformer;
+        private final Instantiator instantiator = new DirectInstantiator();
 
         public ScriptCompilerImpl(ScriptSource source) {
             this.source = new CachingScriptSource(source);
@@ -63,37 +57,11 @@ public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
         }
 
         public <T extends Script> ScriptRunner<T> compile(Class<T> scriptType) {
-            ClassLoader classloader = this.classloader != null ? this.classloader
-                    : Thread.currentThread().getContextClassLoader();
-
-            T script = loadViaCache(classloader, scriptType);
+            Class<? extends T> scriptClass = scriptClassCompiler.compile(source, classloader, transformer, scriptType);
+            T script = instantiator.newInstance(scriptClass);
             script.setScriptSource(source);
             script.setContextClassloader(classloader);
             return scriptRunnerFactory.create(script);
-        }
-
-        private <T extends Script> T loadViaCache(ClassLoader classLoader, Class<T> scriptBaseClass) {
-            Map<String, Object> properties = new HashMap<String, Object>();
-            properties.put("source.filename", source.getFileName());
-            properties.put("source.hash", HashUtil.createHash(source.getResource().getText()));
-
-            PersistentCache cache = cacheRepository.cache(String.format("scripts/%s", source.getClassName())).withProperties(properties).open();
-            File classesDir;
-            if (transformer != null) {
-                String subdirName = String.format("%s_%s", transformer.getId(), scriptBaseClass.getSimpleName());
-                classesDir = new File(cache.getBaseDir(), subdirName);
-            } else {
-                classesDir = new File(cache.getBaseDir(), scriptBaseClass.getSimpleName());
-            }
-
-            if (!cache.isValid() || !classesDir.exists()) {
-                scriptCompilationHandler.compileToDir(source, classLoader, classesDir, transformer, scriptBaseClass);
-                cache.markValid();
-            }
-            Class<? extends T> scriptClass = scriptCompilationHandler.loadFromDir(source, classLoader, classesDir,
-                    scriptBaseClass);
-            Instantiator instantiator = new Instantiator();
-            return instantiator.newInstance(scriptClass);
         }
     }
 }

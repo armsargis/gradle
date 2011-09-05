@@ -19,16 +19,17 @@ import org.gradle.api.Project;
 import org.gradle.api.ProjectState;
 import org.gradle.api.Task;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 public class ProjectProfile {
-    private Project project;
-    private long beforeEvaluate;
-    private long afterEvaluate;
+    private final Project project;
     private ProjectState state;
-    private HashMap<Task, TaskProfile> tasks = new HashMap<Task, TaskProfile>();
+    private HashMap<Task, TaskExecution> tasks = new HashMap<Task, TaskExecution>();
+    private final ContinuousOperation evaluation = new ContinuousOperation() {
+        public String getPath() {
+            return project.getPath();
+        }
+    };
 
     public ProjectProfile(Project project) {
         this.project = project;
@@ -36,53 +37,39 @@ public class ProjectProfile {
 
     /**
      * Gets the task profiling container for the specified task.
-     * @param task
-     * @return
      */
-    public TaskProfile getTaskProfile(Task task) {
-        TaskProfile result = tasks.get(task);
+    public TaskExecution getTaskProfile(Task task) {
+        TaskExecution result = tasks.get(task);
         if (result == null) {
-            result = new TaskProfile(task);
+            result = new TaskExecution(task);
             tasks.put(task, result);
         }
         return result;
     }
 
     /**
-     * Gets the list of task profiling containers.
-     * @return
+     * Returns the task executions for this project.
      */
-    public List<TaskProfile> getTaskProfiles() {
-        return new ArrayList<TaskProfile>(tasks.values());
+    public CompositeOperation<TaskExecution> getTasks() {
+        return new CompositeOperation<TaskExecution>(tasks.values());
     }
 
     /**
      * Get the String project path.
-     * @return
      */
     public String getPath() {
         return project.getPath();
     }
 
     /**
-     * Should be set with a timestamp right before project evaluation begins.
-     * @param beforeEvaluate
+     * Returns the evaluation time of this project.
      */
-    public void setBeforeEvaluate(long beforeEvaluate) {
-        this.beforeEvaluate = beforeEvaluate;
-    }
-
-    /**
-     * Should be set with a timestamp right after proejct evaluation finishes.
-     * @param afterEvaluate
-     */
-    public void setAfterEvaluate(long afterEvaluate) {
-        this.afterEvaluate = afterEvaluate;
+    public ContinuousOperation getEvaluation() {
+        return evaluation;
     }
 
     /**
      * Gets the state of the project after evaluation finishes.
-     * @return
      */
     public ProjectState getState() {
         return state;
@@ -91,25 +78,4 @@ public class ProjectProfile {
     public void setState(ProjectState state) {
         this.state = state;
     }
-
-    /**
-     * Get the elapsed time (in mSec) for project evaluation (configuration phase).
-     * @return
-     */
-    public long getElapsedEvaluation() {
-        return afterEvaluate - beforeEvaluate;
-    }
-
-    /**
-     * Get the elapsed time (in mSec) for execution of all tasks.
-     * @return
-     */
-    public long getElapsedTaskExecution() {
-        long result = 0;
-        for (TaskProfile taskProfile : tasks.values()) {
-            result += taskProfile.getElapsedExecution();
-        }
-        return result;
-    }
 }
-

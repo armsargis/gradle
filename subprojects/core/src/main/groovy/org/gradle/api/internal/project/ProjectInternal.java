@@ -18,10 +18,12 @@ package org.gradle.api.internal.project;
 
 import org.gradle.api.Project;
 import org.gradle.api.ProjectEvaluationListener;
+import org.gradle.api.UnknownProjectException;
 import org.gradle.api.artifacts.Module;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.DynamicObject;
 import org.gradle.api.internal.GradleInternal;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
@@ -40,9 +42,15 @@ public interface ProjectInternal extends Project, ProjectIdentifier, ScriptAware
 
     TaskContainerInternal getImplicitTasks();
 
+    ConfigurationContainerInternal getConfigurations();
+
     ScriptSource getBuildScriptSource();
 
     void addChildProject(ProjectInternal childProject);
+
+    ProjectInternal project(String path) throws UnknownProjectException;
+
+    ProjectInternal findProject(String path);
 
     IProjectRegistry<ProjectInternal> getProjectRegistry();
 

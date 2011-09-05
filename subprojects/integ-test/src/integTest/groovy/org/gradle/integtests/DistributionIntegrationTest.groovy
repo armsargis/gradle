@@ -58,7 +58,7 @@ class DistributionIntegrationTest {
         contentsDir.file('src/org/gradle/api/Project.java').assertIsFile()
         contentsDir.file('src/org/gradle/initialization/defaultBuildSourceScript.txt').assertIsFile()
         contentsDir.file('src/org/gradle/gradleplugin/userinterface/swing/standalone/BlockingApplication.java').assertIsFile()
-        contentsDir.file('src/org/gradle/wrapper/Wrapper.java').assertIsFile()
+        contentsDir.file('src/org/gradle/wrapper/WrapperExecutor.java').assertIsFile()
 
         // Samples
         contentsDir.file('samples/java/quickstart/build.gradle').assertIsFile()
@@ -134,7 +134,7 @@ class DistributionIntegrationTest {
         TestFile contentsDir = dist.testDir.file("gradle-$version")
 
         // Build self using wrapper in source distribution
-        executer.inDirectory(contentsDir).usingExecutable('gradlew').withTasks('binZip').run()
+        executer.withDeprecationChecksDisabled().inDirectory(contentsDir).usingExecutable('gradlew').withTasks('binZip').run()
 
         File binZip = contentsDir.file('build/distributions').listFiles()[0]
         Expand unpack = new Expand()

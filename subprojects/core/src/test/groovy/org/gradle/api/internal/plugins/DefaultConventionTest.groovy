@@ -41,54 +41,38 @@ class DefaultConventionTest {
         convention.plugins.plugin2 = convention2
     }
 
-    @Test public void testGetProperty() {
-        assertEquals(convention1.a, convention.plugins.plugin1.a)
-        assertEquals(convention1.a, convention.a)
+    @Test public void mixesInEachPropertyOfConventionObject() {
+        assertEquals(convention1.b, convention.extensionsAsDynamicObject.b)
     }
 
-    @Test public void testGetPropertiesWithAmbiguity() {
-        assertEquals(convention1.a, convention.plugins.plugin1.a)
-        assertEquals(convention2.a, convention.plugins.plugin2.a)
-        assertEquals(convention1.a, convention.a)
+    @Test public void conventionObjectsPropertiesHavePrecendenceAccordingToOrderAdded() {
+        assertEquals(convention1.a, convention.extensionsAsDynamicObject.a)
     }
 
-    @Test public void testGetAllProperties() {
-        assertEquals(convention1.a, convention.properties.a)
-        assertEquals(convention1.b, convention.properties.b)
-        assertEquals(convention1.c, convention.properties.c)
+    @Test public void canSetConventionObjectProperties() {
+        convention.extensionsAsDynamicObject.b = 'newvalue'
+        assertEquals('newvalue', convention1.b)
     }
 
-    @Test public void testSetProperties() {
-        convention.b = 'newvalue'
-        assertEquals('newvalue', convention.plugins.plugin1.b)
-    }
-
-    @Test public void testSetPropertiesWithAmbiguity() {
-        convention.a = 'newvalue'
+    @Test public void canSetPropertiesWithAmbiguity() {
+        convention.extensionsAsDynamicObject.a = 'newvalue'
         assertEquals('newvalue', convention1.a)
     }
 
-    @Test (expected = MissingPropertyException) public void testMissingPropertiesWithGet() {
-        convention.prop
+    @Test(expected = MissingPropertyException) public void throwsMissingPropertyExceptionForUnknownProperty() {
+        convention.extensionsAsDynamicObject.prop
     }
 
-    @Test(expected = MissingPropertyException) public void testMissingPropertiesWithSet() {
-        convention.prop = 'newvalue'
+    @Test public void mixesInEachMethodOfConventionObject() {
+        assertEquals(convention1.meth('somearg'), convention.extensionsAsDynamicObject.meth('somearg'))
     }
 
-    @Test public void testMethods() {
-        assertEquals(convention1.meth('somearg'), convention.plugins.plugin1.meth('somearg'))
-        assertEquals(convention1.meth('somearg'), convention.meth('somearg'))
+    @Test public void conventionObjectsMethodsHavePrecendenceAccordingToOrderAdded() {
+        assertEquals(convention1.meth(), convention.extensionsAsDynamicObject.meth())
     }
 
-    @Test public void testMethodsWithAmbiguity() {
-        assertEquals(convention1.meth(), convention.plugins.plugin1.meth())
-        assertEquals(convention2.meth(), convention.plugins.plugin2.meth())
-        assertEquals(convention.meth(), convention1.meth())
-    }
-
-    @Test (expected = MissingMethodException) public void testMissingMethod() {
-        convention.methUnknown()
+    @Test(expected = MissingMethodException) public void testMissingMethod() {
+        convention.extensionsAsDynamicObject.methUnknown()
     }
 
     @Test public void testCanLocateConventionObjectByType() {
@@ -97,7 +81,7 @@ class DefaultConventionTest {
         assertSame(convention1, convention.findPlugin(TestPluginConvention1))
         assertSame(convention2, convention.findPlugin(TestPluginConvention2))
     }
-    
+
     @Test public void testGetPluginFailsWhenMultipleConventionObjectsWithCompatibleType() {
         try {
             convention.getPlugin(Object)
@@ -124,9 +108,33 @@ class DefaultConventionTest {
             assertThat(e.message, equalTo('Could not find any convention object of type String.'))
         }
     }
-    
+
     @Test public void testFindPluginReturnsNullWhenNoConventionObjectsWithCompatibleType() {
         assertNull(convention.findPlugin(String))
+    }
+
+    @Test public void addsPropertyAndConfigureMethodForEachExtension() {
+        //when
+        convention = new DefaultConvention()
+        def ext = new FooExtension()
+        convention.add("foo", ext)
+
+        //then
+        assertTrue(convention.extensionsAsDynamicObject.hasProperty("foo"))
+        assertTrue(convention.extensionsAsDynamicObject.hasMethod("foo", {}))
+        assertEquals(convention.extensionsAsDynamicObject.properties.get("foo"), ext);
+    }
+
+    @Test public void extensionsTakePrecendenceOverPluginConventions() {
+        convention = new DefaultConvention()
+        convention.plugins.foo = new FooPluginExtension()
+        convention.add("foo", new FooExtension())
+
+        assertTrue(convention.extensionsAsDynamicObject.properties.get("foo") instanceof FooExtension);
+        assertTrue(convention.extensionsAsDynamicObject.foo instanceof FooExtension);
+        convention.extensionsAsDynamicObject.foo {
+            assertEquals("Hello world!", message);
+        }
     }
 
     static class FooExtension {
@@ -135,32 +143,9 @@ class DefaultConventionTest {
 
     static class FooPluginExtension {
         String foo = "foo"
+
         void foo(Closure closure) {
             fail("should not be called");
-        }
-    }
-
-    @Test public void knowsExtensions() {
-        //when
-        convention = new DefaultConvention()
-        def ext = new FooExtension()
-        convention.add("foo", ext)
-
-        //then
-        assertTrue(convention.hasProperty("foo"))
-        assertTrue(convention.hasMethod("foo", {}))
-        assertEquals(convention.getProperties().get("foo"), ext);
-    }
-
-    @Test public void extensionsTakePrecendenceOverPluginConventions() {
-        convention = new DefaultConvention()
-        convention.plugins.foo = new FooPluginExtension()
-        convention.add("foo", new FooExtension())
-
-        assertTrue(convention.getProperties().get("foo") instanceof FooExtension);
-        assertTrue(convention.foo instanceof FooExtension);
-        convention.foo {
-            assertEquals("Hello world!", message);
         }
     }
 }

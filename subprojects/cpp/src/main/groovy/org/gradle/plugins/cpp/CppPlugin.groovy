@@ -15,25 +15,20 @@
  */
 package org.gradle.plugins.cpp
 
-import org.gradle.api.Project
 import org.gradle.api.Plugin
-import org.gradle.api.plugins.BasePlugin
+import org.gradle.api.internal.project.ProjectInternal
 
-class CppPlugin implements Plugin<Project> {
+class CppPlugin implements Plugin<ProjectInternal> {
 
-    void apply(Project project) {
-        project.plugins.apply(BasePlugin)
+    void apply(ProjectInternal project) {
+        project.apply(plugin: "binaries")
+        project.apply(plugin: "gpp-compiler")
+        project.extensions.cpp = new CppExtension(project)
 
-        def extension = new CppProjectExtension(project)
-        configureSourceSetDefaults(extension)
-
-        project.extensions.add('cpp', extension)
-    }
-
-    private configureSourceSetDefaults(CppProjectExtension extension) {
-        extension.sourceSets.all { sourceSet ->
-            sourceSet.cpp.srcDir "src/${sourceSet.name}/cpp"
-            sourceSet.headers.srcDir "src/${sourceSet.name}/headers"
+        // Defaults for all cpp source sets
+        project.cpp.sourceSets.all { sourceSet ->
+            sourceSet.source.srcDir "src/${sourceSet.name}/cpp"
+            sourceSet.exportedHeaders.srcDir "src/${sourceSet.name}/headers"
         }
     }
 

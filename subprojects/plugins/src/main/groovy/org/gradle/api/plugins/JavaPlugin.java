@@ -119,15 +119,14 @@ public class JavaPlugin implements Plugin<Project> {
             }
         });
 
-        project.getConfigurations().getByName(Dependency.ARCHIVES_CONFIGURATION).addArtifact(new ArchivePublishArtifact(
-                jar));
+        project.getConfigurations().getByName(Dependency.ARCHIVES_CONFIGURATION).getArtifacts().add(new ArchivePublishArtifact(jar));
     }
 
     private void configureBuild(Project project) {
         addDependsOnTaskInOtherProjects(project.getTasks().getByName(JavaBasePlugin.BUILD_NEEDED_TASK_NAME), true,
-                JavaBasePlugin.BUILD_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
+                JavaBasePlugin.BUILD_NEEDED_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
         addDependsOnTaskInOtherProjects(project.getTasks().getByName(JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME), false,
-                JavaBasePlugin.BUILD_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
+                JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
     }
 
     private void configureTest(final Project project, final JavaPluginConvention pluginConvention) {

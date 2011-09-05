@@ -18,7 +18,7 @@ package org.gradle.plugins.ide.idea;
 
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
-import org.gradle.api.internal.ClassGenerator
+import org.gradle.api.internal.Instantiator
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.plugins.ide.api.XmlFileContentMerger
 import org.gradle.plugins.ide.idea.internal.IdeaNameDeduper
@@ -26,10 +26,10 @@ import org.gradle.plugins.ide.internal.IdePlugin
 import org.gradle.plugins.ide.idea.model.*
 
 /**
- * @author Hans Dockter
- *
- * Adds an IdeaModule task. When applied to a root project, also adds an IdeaProject task.
+ * Adds a GenerateIdeaModule task. When applied to a root project, also adds a GenerateIdeaProject task.
  * For projects that have the Java plugin applied, the tasks receive additional Java-specific configuration.
+ *
+ *  @author Hans Dockter
  */
 class IdeaPlugin extends IdePlugin {
 
@@ -44,7 +44,7 @@ class IdeaPlugin extends IdePlugin {
         cleanTask.description = 'Cleans IDEA project files (IML, IPR)'
 
         model = new IdeaModel()
-        project.extensions.add('idea', model)
+        project.extensions.idea = model
 
         configureIdeaWorkspace(project)
         configureIdeaProject(project)
@@ -57,9 +57,13 @@ class IdeaPlugin extends IdePlugin {
     void hookDeduplicationToTheRoot(Project project) {
         if (isRoot(project)) {
             project.gradle.projectsEvaluated {
-                new IdeaNameDeduper().configureRoot(project)
+                makeSureModuleNamesAreUnique()
             }
         }
+    }
+
+    public void makeSureModuleNamesAreUnique() {
+        new IdeaNameDeduper().configureRoot(project.rootProject)
     }
 
     private configureIdeaWorkspace(Project project) {
@@ -76,7 +80,7 @@ class IdeaPlugin extends IdePlugin {
     private configureIdeaModule(Project project) {
         def task = project.task('ideaModule', description: 'Generates IDEA module files (IML)', type: GenerateIdeaModule) {
             def iml = new IdeaModuleIml(xmlTransformer, project.projectDir)
-            module = services.get(ClassGenerator).newInstance(IdeaModule, project, iml)
+            module = services.get(Instantiator).newInstance(IdeaModule, project, iml)
 
             model.module = module
 
@@ -103,7 +107,7 @@ class IdeaPlugin extends IdePlugin {
         if (isRoot(project)) {
             def task = project.task('ideaProject', description: 'Generates IDEA project file (IPR)', type: GenerateIdeaProject) {
                 def ipr = new XmlFileContentMerger(xmlTransformer)
-                ideaProject = services.get(ClassGenerator).newInstance(IdeaProject, ipr)
+                ideaProject = services.get(Instantiator).newInstance(IdeaProject, ipr)
 
                 model.project = ideaProject
 

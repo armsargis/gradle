@@ -18,40 +18,40 @@ package org.gradle.api.internal;
 import groovy.lang.Closure;
 import groovy.lang.MissingPropertyException;
 import org.gradle.api.*;
+import org.gradle.api.internal.collections.CollectionEventRegister;
+import org.gradle.api.internal.collections.CollectionFilter;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.util.ConfigureUtil;
 
 import java.util.*;
 
-import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.CollectionEventRegister;
-
 public class DefaultNamedDomainObjectCollection<T> extends DefaultDomainObjectCollection<T> implements NamedDomainObjectCollection<T> {
 
-    private final ClassGenerator classGenerator;
+    private final Instantiator instantiator;
     private final Namer<? super T> namer;
 
-    private final DynamicObject dynamicObject = new ContainerDynamicObject();
+    private final ContainerElementsDynamicObject elementsDynamicObject = new ContainerElementsDynamicObject();
+    private final ContainerDynamicObject dynamicObject = new ContainerDynamicObject(elementsDynamicObject);
 
     private final List<Rule> rules = new ArrayList<Rule>();
     private Set<String> applyingRulesFor = new HashSet<String>();
 
-    public DefaultNamedDomainObjectCollection(Class<T> type, Collection<T> store, ClassGenerator classGenerator, Namer<? super T> namer) {
+    public DefaultNamedDomainObjectCollection(Class<T> type, Collection<T> store, Instantiator instantiator, Namer<? super T> namer) {
         super(type, store);
-        this.classGenerator = classGenerator;
+        this.instantiator = instantiator;
         this.namer = namer;
     }
 
-    protected DefaultNamedDomainObjectCollection(Class<T> type, Collection<T> store, CollectionEventRegister<T> eventRegister, ClassGenerator classGenerator, Namer<? super T> namer) {
+    protected DefaultNamedDomainObjectCollection(Class<T> type, Collection<T> store, CollectionEventRegister<T> eventRegister, Instantiator instantiator, Namer<? super T> namer) {
         super(type, store, eventRegister);
-        this.classGenerator = classGenerator;
+        this.instantiator = instantiator;
         this.namer = namer;
     }
 
     // should be protected, but use of the class generator forces it to be public
-    public DefaultNamedDomainObjectCollection(DefaultNamedDomainObjectCollection<? super T> collection, CollectionFilter<T> filter, ClassGenerator classGenerator, Namer<? super T> namer) {
-        this(filter.getType(), collection.filteredStore(filter), collection.filteredEvents(filter), classGenerator, namer);
+    public DefaultNamedDomainObjectCollection(DefaultNamedDomainObjectCollection<? super T> collection, CollectionFilter<T> filter, Instantiator instantiator, Namer<? super T> namer) {
+        this(filter.getType(), collection.filteredStore(filter), collection.filteredEvents(filter), instantiator, namer);
     }
 
     /**
@@ -68,7 +68,7 @@ public class DefaultNamedDomainObjectCollection<T> extends DefaultDomainObjectCo
 
     /**
      * <p>Subclass hook for implementations wanting to throw an exception when an attempt is made to add
-     * an item with the same name as an existing time.</p>
+     * an item with the same name as an existing item.</p>
      * 
      * <p>This implementation does not thrown an exception, meaning that {@code add(T)} will simply return {@code false}.
      * 
@@ -77,20 +77,36 @@ public class DefaultNamedDomainObjectCollection<T> extends DefaultDomainObjectCo
     protected void handleAttemptToAddItemWithNonUniqueName(T o) {
         // do nothing
     }
-    
+
+    /**
+     * Asserts that an item with the given name can be added to this collection.
+     */
+    protected void assertCanAdd(String name) {
+        if (hasWithName(name)) {
+            throw new InvalidUserDataException(String.format("Cannot add a %s with name '%s' as a %s with that name already exists.", getTypeDisplayName(), name, getTypeDisplayName()));
+        }
+    }
+
+    /**
+     * Asserts that the given item can be added to this collection.
+     */
+    protected void assertCanAdd(T t) {
+        assertCanAdd(getNamer().determineName(t));
+    }
+
     public Namer<T> getNamer() {
         return (Namer)this.namer;
     }
     
-    protected ClassGenerator getClassGenerator() {
-        return classGenerator;
+    protected Instantiator getInstantiator() {
+        return instantiator;
     }
 
     /**
      * Creates a filtered version of this collection.
      */
     protected <S extends T> DefaultNamedDomainObjectCollection<S> filtered(CollectionFilter<S> filter) {
-        return classGenerator.newInstance(DefaultNamedDomainObjectCollection.class, this, filter, classGenerator, namer);
+        return instantiator.newInstance(DefaultNamedDomainObjectCollection.class, this, filter, instantiator, namer);
     }
 
     public String getDisplayName() {
@@ -181,6 +197,10 @@ public class DefaultNamedDomainObjectCollection<T> extends DefaultDomainObjectCo
         return dynamicObject;
     }
 
+    protected DynamicObject getElementsAsDynamicObject() {
+        return elementsDynamicObject;
+    }
+
     private void applyRules(String name) {
         if (applyingRulesFor.contains(name)) {
             return;
@@ -233,9 +253,8 @@ public class DefaultNamedDomainObjectCollection<T> extends DefaultDomainObjectCo
     }
 
     private class ContainerDynamicObject extends CompositeDynamicObject {
-        private ContainerDynamicObject() {
-            setObjects(new BeanDynamicObject(DefaultNamedDomainObjectCollection.this),
-                    new ContainerElementsDynamicObject());
+        private ContainerDynamicObject(ContainerElementsDynamicObject elementsDynamicObject) {
+            setObjects(new BeanDynamicObject(DefaultNamedDomainObjectCollection.this), elementsDynamicObject);
         }
 
         @Override

@@ -16,13 +16,21 @@
 package org.gradle.launcher;
 
 import org.gradle.BuildExceptionReporter;
-import org.gradle.CommandLineArgumentException;
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
 import org.gradle.api.internal.project.ServiceRegistry;
+import org.gradle.launcher.daemon.DaemonConnector;
+import org.gradle.launcher.daemon.ExternalDaemonConnector;
+import org.gradle.launcher.daemon.DaemonClient;
+import org.gradle.launcher.daemon.DaemonTcpServerConnector;
+import org.gradle.launcher.daemon.Daemon;
 import org.gradle.configuration.GradleLauncherMetaData;
 import org.gradle.gradleplugin.userinterface.swing.standalone.BlockingApplication;
 import org.gradle.initialization.*;
+import org.gradle.cli.CommandLineArgumentException;
+import org.gradle.cli.CommandLineConverter;
+import org.gradle.cli.CommandLineParser;
+import org.gradle.cli.ParsedCommandLine;
 import org.gradle.logging.LoggingConfiguration;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.LoggingServiceRegistry;
@@ -114,13 +122,13 @@ public class CommandLineActionFactory {
 
         StartParameter startParameter = new StartParameter();
         startParameterConverter.convert(commandLine, startParameter);
-        DaemonConnector connector = new DaemonConnector(startParameter.getGradleUserHomeDir());
+        DaemonConnector connector = new ExternalDaemonConnector(startParameter.getGradleUserHomeDir());
         GradleLauncherMetaData clientMetaData = clientMetaData();
         long startTime = ManagementFactory.getRuntimeMXBean().getStartTime();
         DaemonClient client = new DaemonClient(connector, clientMetaData, loggingServices.get(OutputEventListener.class));
 
         if (commandLine.hasOption(FOREGROUND)) {
-            return new ActionAdapter(new DaemonMain(loggingServices, connector));
+            return new ActionAdapter(new Daemon(loggingServices, new DaemonTcpServerConnector(), connector.getDaemonRegistry()));
         }
         if (commandLine.hasOption(STOP)) {
             return new ActionAdapter(new StopDaemonAction(client));

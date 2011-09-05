@@ -20,7 +20,6 @@ import groovy.lang.Closure;
 import groovy.lang.MissingPropertyException;
 import groovy.lang.Script;
 import org.gradle.api.*;
-import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.Module;
 import org.gradle.api.artifacts.dsl.ArtifactHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
@@ -31,6 +30,7 @@ import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.internal.*;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.file.FileResolver;
@@ -123,7 +123,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
 
     private DependencyHandler dependencyHandler;
 
-    private ConfigurationContainer configurationContainer;
+    private ConfigurationContainerInternal configurationContainer;
 
     private ArtifactHandler artifactHandler;
 
@@ -175,7 +175,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         fileOperations = services.get(FileOperations.class);
         projectEvaluator = services.get(ProjectEvaluator.class);
         repositoryHandler = services.get(RepositoryHandler.class);
-        configurationContainer = services.get(ConfigurationContainer.class);
+        configurationContainer = services.get(ConfigurationContainerInternal.class);
         pluginContainer = services.get(PluginContainer.class);
         artifactHandler = services.get(ArtifactHandler.class);
         dependencyHandler = services.get(DependencyHandler.class);
@@ -189,7 +189,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         if (parent != null) {
             dynamicObjectHelper.setParent(parent.getInheritedScope());
         }
-        dynamicObjectHelper.addObject(taskContainer.getAsDynamicObject(), DynamicObjectHelper.Location.AfterConvention);
+        dynamicObjectHelper.addObject(taskContainer.getTasksAsDynamicObject(), DynamicObjectHelper.Location.AfterConvention);
 
         evaluationListener.add(gradle.getProjectEvaluationBroadcaster());
     }
@@ -355,11 +355,11 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return repositoryHandler;
     }
 
-    public ConfigurationContainer getConfigurations() {
+    public ConfigurationContainerInternal getConfigurations() {
         return configurationContainer;
     }
 
-    public void setConfigurationContainer(ConfigurationContainer configurationContainer) {
+    public void setConfigurationContainer(ConfigurationContainerInternal configurationContainer) {
         this.configurationContainer = configurationContainer;
     }
 
@@ -374,10 +374,6 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
 
     public Convention getConvention() {
         return dynamicObjectHelper.getConvention();
-    }
-
-    public void setConvention(Convention convention) {
-        dynamicObjectHelper.setConvention(convention);
     }
 
     public String getPath() {
@@ -418,15 +414,15 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return this.path.relativePath(path);
     }
 
-    public Project project(String path) {
-        Project project = findProject(path);
+    public ProjectInternal project(String path) {
+        ProjectInternal project = findProject(path);
         if (project == null) {
             throw new UnknownProjectException(String.format("Project with path '%s' could not be found in %s.", path, this));
         }
         return project;
     }
 
-    public Project findProject(String path) {
+    public ProjectInternal findProject(String path) {
         if (!isTrue(path)) {
             throw new InvalidUserDataException("A path must be specified!");
         }
@@ -932,18 +928,18 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public <T> NamedDomainObjectContainer<T> container(Class<T> type) {
-        ClassGenerator classGenerator = getServices().get(ClassGenerator.class);
-        return classGenerator.newInstance(FactoryNamedDomainObjectContainer.class, type, classGenerator, new DynamicPropertyNamer());
+        Instantiator instantiator = getServices().get(Instantiator.class);
+        return instantiator.newInstance(FactoryNamedDomainObjectContainer.class, type, instantiator, new DynamicPropertyNamer());
     }
 
     public <T> NamedDomainObjectContainer<T> container(Class<T> type, NamedDomainObjectFactory<T> factory) {
-        ClassGenerator classGenerator = getServices().get(ClassGenerator.class);
-        return classGenerator.newInstance(FactoryNamedDomainObjectContainer.class, type, classGenerator, new DynamicPropertyNamer(), factory);
+        Instantiator instantiator = getServices().get(Instantiator.class);
+        return instantiator.newInstance(FactoryNamedDomainObjectContainer.class, type, instantiator, new DynamicPropertyNamer(), factory);
     }
 
     public <T> NamedDomainObjectContainer<T> container(Class<T> type, Closure factoryClosure) {
-        ClassGenerator classGenerator = getServices().get(ClassGenerator.class);
-        return classGenerator.newInstance(FactoryNamedDomainObjectContainer.class, type, classGenerator, new DynamicPropertyNamer(), factoryClosure);
+        Instantiator instantiator = getServices().get(Instantiator.class);
+        return instantiator.newInstance(FactoryNamedDomainObjectContainer.class, type, instantiator, new DynamicPropertyNamer(), factoryClosure);
     }
 
     public ExtensionContainer getExtensions() {

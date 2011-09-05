@@ -56,6 +56,7 @@ libraries = [
         ivy: 'org.apache.ivy:ivy:2.2.0@jar',
         jaxen: 'jaxen:jaxen:1.1@jar',
         slf4j_api: 'org.slf4j:slf4j-api:1.6.1@jar',
+        jcip: "net.jcip:jcip-annotations:1.0",
         jcl_to_slf4j: 'org.slf4j:jcl-over-slf4j:1.6.1@jar',
         jul_to_slf4j: 'org.slf4j:jul-to-slf4j:1.6.1@jar',
         log4j_to_slf4j: 'org.slf4j:log4j-over-slf4j:1.6.1@jar',
@@ -93,9 +94,16 @@ allprojects {
 
     repositories {
         mavenRepo(urls: 'http://repo.gradle.org/gradle/libs')
+        ivy {
+            name = 'jfrog'
+            artifactPattern('http://repo.jfrog.org/artifactory/gradle-plugins-snapshots/[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]')
+//        artifactPattern('http://repo.jfrog.org/artifactory/gradle-ivy-local/[organisation]/[module]/ivy-[revision].xml')
+        }
     }
 
     version = this.version
+    
+    apply from: "$rootDir/gradle/conventions-dsl.gradle"
 }
 
 configure(groovyProjects()) {
@@ -143,6 +151,10 @@ clean.dependsOn subprojects.collect { "$it.path:clean" }
 
 task check(overwrite: true, dependsOn: groovyProjects()*.check)
 check.dependsOn ':docs:checkstyleApi'
+configure(groovyProjects()) {
+    check.dependsOn ":docs:checkstyleApi"
+}
+
 task test(overwrite: true, dependsOn: groovyProjects()*.test)
 task uploadArchives(dependsOn: publishedProjects()*.uploadArchives)
 task publishLocalArchives(dependsOn: publishedProjects()*.publishLocalArchives)
@@ -276,7 +288,7 @@ def guessMaxForks() {
     return Math.max(2, (int) (processors / 2))
 }
 
-task testedDists(dependsOn: [assemble, check, integTests])
+task testedDists(dependsOn: [assemble, check])
 
 task nightlyBuild(dependsOn: [clean, testedDists, ':docs:uploadDocs'])
 
@@ -343,7 +355,7 @@ gradle.taskGraph.whenReady {graph ->
 
 // A marker task which causes the release version to be used when it is present in the task graph
 task releaseVersion
-//TODO SF - this task name is inconsitent because other releaseXxx tasks actually upload some content somewhere. Should be called something like 'markReleaseVersion'
+//TODO SF - this task name is inconsistent because other releaseXxx tasks actually upload some content somewhere. Should be called something like 'markReleaseVersion'
 
 def tagNow() {
     def git = new Git(project)
@@ -362,7 +374,7 @@ task testedTag(dependsOn: testedDists) << {
 
 task releaseArtifacts {
     description = 'Builds the release artifacts'
-    //TODO SF - this task name is inconsitent because other releaseXxx tasks actually upload some content somewhere. Should be called something like 'buildReleaseArtifacts'
+    //TODO SF - this task name is inconsistent because other releaseXxx tasks actually upload some content somewhere. Should be called something like 'buildReleaseArtifacts'
     group = 'release'
     dependsOn releaseVersion, assemble, ':docs:websiteDocs'
 }
@@ -397,8 +409,12 @@ def publishedProjects() {
     [project(':core'), project(':toolingApi'), project(':wrapper')]
 }
 
+def internalProjects() {
+    subprojects.findAll { it.name.startsWith("internal") } + [project(":integTest")]
+}
+
 def runtimeProjects() {
-    groovyProjects() - pluginProjects() - [project(':integTest'), project(':coreImpl')]
+    groovyProjects() - pluginProjects() - internalProjects() - [project(':coreImpl')]
 }
 
 def pluginProjects() {

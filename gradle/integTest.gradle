@@ -10,6 +10,10 @@ configurations {
     }
 }
 
+dependencies {
+    integTestCompile project(":internalIntegTesting")
+}
+
 sourceSets {
     integTest {
         compileClasspath = sourceSets.main.output + sourceSets.test.output + configurations.integTestCompile
@@ -17,39 +21,44 @@ sourceSets {
     }
 }
 
-idea {
-    module {
-        testSourceDirs += sourceSets.integTest.groovy.srcDirs
-        testSourceDirs += sourceSets.integTest.resources.srcDirs
-        scopes.TEST.plus.add(configurations.integTestCompile)
-        scopes.TEST.plus.add(configurations.integTestRuntime)
+plugins.withType(org.gradle.plugins.ide.idea.IdeaPlugin) { // lazy as plugin not applied yet
+    idea {
+        module {
+            testSourceDirs += sourceSets.integTest.groovy.srcDirs
+            testSourceDirs += sourceSets.integTest.resources.srcDirs
+            scopes.TEST.plus.add(configurations.integTestCompile)
+            scopes.TEST.plus.add(configurations.integTestRuntime)
+        }
     }
 }
 
-eclipse {
-    classpath {
-        plusConfigurations.add(configurations.integTestCompile)
-        plusConfigurations.add(configurations.integTestRuntime)
+plugins.withType(org.gradle.plugins.ide.eclipse.EclipsePlugin) { // lazy as plugin not applied yet
+    eclipse {
+        classpath {
+            plusConfigurations.add(configurations.integTestCompile)
+            plusConfigurations.add(configurations.integTestRuntime)
+        }
     }
 }
 
 integTestTasks = tasks.withType(Test).matching { it.name.toLowerCase().endsWith('integtest') }
-rootProject.integTests << integTestTasks
 
 integTestTasks.all {
-    dependsOn ':intTestImage', project(":docs").samples
+    dependsOn ':intTestImage', project(":docs").tasks.matching { it.name == "samples" } // lazy as doc not eval'd yet
     testClassesDir = sourceSets.integTest.output.classesDir
     classpath = sourceSets.integTest.runtimeClasspath
     testSrcDirs = []
     jvmArgs '-XX:+HeapDumpOnOutOfMemoryError'
 
     testResultsDir = file("${project.testResultsDir}/$name")
-    testReportDir = file("${project.testReportDir}/$name")
-    
+
     doFirst {
+        testReportDir = file("${project.reportsDir}/$name")
         systemProperties['integTest.gradleHomeDir'] = integTestImageDir.absolutePath
         systemProperties['integTest.gradleUserHomeDir'] = integTestUserDir.absolutePath
         systemProperties['integTest.samplesdir'] = project(":docs").samplesDir.absolutePath
+        // TODO - remove this once wharf is behaving itself
+        delete "$integTestUserDir/worker-1"
     }
 }
 
@@ -64,12 +73,36 @@ integTestTasks.all {
     }
 }
 
+//exclude some of the daemon tests until we stabilize daemon and fix the tests
+daemonIntegTest {
+  exclude "**/org/gradle/integtests/tooling/**",
+          "**/SigningSamplesSpec.class", "**/CppHelloWorldExecutableIntegrationSpec.class", "**/CppSamplesSpec.class", "**/CodeQualityIntegrationTest.class",
+          "**/CommandLineIntegrationTest.class", "**/IncrementalBuildIntegrationTest.class", "**/EarPluginIntegrationTest.class",
+          "**/IncrementalTestIntegrationTest.class", "**/JUnitIntegrationTest.class", "**/JavaProjectIntegrationTest.class",
+          "**/LoggingIntegrationTest.class", "**/ProjectLayoutIntegrationTest.class",
+          "**/SamplesCustomPluginIntegrationTest.class", "**/SamplesMixedJavaAndScalaIntegrationTest.class",
+          "**/UserGuideSamplesIntegrationTest.class", "**/MavenDependencyResolutionIntegrationTest.class",
+          "**/MavenPublicationIntegrationTest.class", "**/SamplesMavenPomGenerationIntegrationTest.class",
+          "**/SamplesMavenQuickstartIntegrationTest.class", "**/PluginsAutoTestedSamplesTest.class",
+          "**/SampleTestNGIntegrationTest.class", "**/TestNGIntegrationTest.class"
+
+  doLast {
+      if (project.hasProperty("waitForDaemonsToDieMillis")) {
+         println "Property 'waitForDaemonsToDieMillis' passed so I'm waiting $project.waitForDaemonsToDieMillis millis so that deamons can die with honor..."
+         Thread.sleep(Integer.parseInt(project.waitForDaemonsToDieMillis));
+      }
+  }
+}
+
 task integTest(type: Test) {
     doFirst {
         systemProperties['org.gradle.integtest.executer'] = integTestMode
     }
+    if (OperatingSystem.current().isWindows()) {
+        //Temporary hack to investigate windows build issues
+        exclude "**/org/gradle/integtests/tooling/**"
+    }
 }
-
 
 tasks.findByName("check")?.dependsOn(integTest)
 

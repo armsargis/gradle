@@ -23,10 +23,10 @@ import org.apache.ivy.core.report.ResolveReport;
 import org.apache.ivy.core.resolve.ResolveOptions;
 import org.gradle.api.GradleException;
 import org.gradle.api.artifacts.*;
-import org.gradle.api.internal.artifacts.DefaultResolvedArtifactTest;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.util.GUtil;
+import static org.gradle.api.artifacts.ArtifactsTestUtils.createResolvedArtifact;
 import org.hamcrest.BaseMatcher;
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -85,6 +85,7 @@ public class DefaultIvyDependencyResolverTest {
         final ResolvedDependency resolvedDependency2 = context.mock(ResolvedDependency.class, "resolved2");
         ResolvedDependency resolvedDependency3 = context.mock(ResolvedDependency.class, "resolved3");
         final IvyConversionResult conversionResultStub = context.mock(IvyConversionResult.class);
+        final DependencySet dependencies = context.mock(DependencySet.class);
         final Map<Dependency, Set<ResolvedDependency>> firstLevelResolvedDependencies = GUtil.map(
                 moduleDependencyDummy1,
                 toSet(resolvedDependency1, resolvedDependency2),
@@ -93,20 +94,20 @@ public class DefaultIvyDependencyResolverTest {
 
         context.checking(new Expectations() {{
             allowing(resolvedDependency1).getParentArtifacts(root);
-            will(returnValue(toSet(DefaultResolvedArtifactTest.createResolvedArtifact(context, "dep1parent", "someType", "someExtension", new File("dep1parent")))));
+            will(returnValue(toSet(createResolvedArtifact(context, "dep1parent", "someType", "someExtension", new File("dep1parent")))));
             allowing(resolvedDependency1).getModuleArtifacts();
-            will(returnValue(toSet(DefaultResolvedArtifactTest.createResolvedArtifact(context, "dep1", "someType", "someExtension", new File("dep1")))));
+            will(returnValue(toSet(createResolvedArtifact(context, "dep1", "someType", "someExtension", new File("dep1")))));
             allowing(resolvedDependency1).getChildren();
             will(returnValue(toSet()));
             allowing(resolvedDependency2).getParentArtifacts(root);
             will(returnValue(toSet()));
             allowing(resolvedDependency2).getModuleArtifacts();
-            will(returnValue(toSet(DefaultResolvedArtifactTest.createResolvedArtifact(context, "dep2", "someType", "someExtension", new File("dep2")))));
+            will(returnValue(toSet(createResolvedArtifact(context, "dep2", "someType", "someExtension", new File("dep2")))));
             allowing(resolvedDependency2).getChildren();
             will(returnValue(toSet()));
             allowing(configurationStub).getAllDependencies();
-            will(returnValue(toDomainObjectSet(Dependency.class, moduleDependencyDummy1, moduleDependencyDummy2, selfResolvingDependencyDummy)));
-            allowing(configurationStub).getAllDependencies(ModuleDependency.class);
+            will(returnValue(dependencies));
+            allowing(dependencies).withType(ModuleDependency.class);
             will(returnValue(toDomainObjectSet(ModuleDependency.class, moduleDependencyDummy1, moduleDependencyDummy2)));
             allowing(ivyReportConverterStub).convertReport(resolveReportMock, configurationStub);
             will(returnValue(conversionResultStub));
@@ -139,7 +140,6 @@ public class DefaultIvyDependencyResolverTest {
     @Test
     public void testGetModuleDependencies() throws IOException, ParseException {
         prepareResolveReport();
-        final ModuleDependency moduleDependencyDummy1 = context.mock(ModuleDependency.class, "dep1");
         final ResolvedDependency root = context.mock(ResolvedDependency.class, "root");
         final ResolvedDependency resolvedDependency1 = context.mock(ResolvedDependency.class, "resolved1");
         final ResolvedDependency resolvedDependency2 = context.mock(ResolvedDependency.class, "resolved2");
@@ -187,7 +187,6 @@ public class DefaultIvyDependencyResolverTest {
         ResolvedConfiguration configuration = ivyDependencyResolver.resolve(configurationStub, ivyStub, moduleDescriptor);
         context.checking(new Expectations() {{
             allowing(configurationStub).getAllDependencies();
-            allowing(configurationStub).getAllDependencies(ModuleDependency.class);
         }});
         try {
             configuration.getFiles(Specs.SATISFIES_ALL);

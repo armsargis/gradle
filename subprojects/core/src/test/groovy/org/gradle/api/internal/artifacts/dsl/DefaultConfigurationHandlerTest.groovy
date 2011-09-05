@@ -19,27 +19,37 @@ package org.gradle.api.internal.artifacts.dsl
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.UnknownConfigurationException
 import org.gradle.api.internal.artifacts.IvyService
-import org.gradle.util.JUnit4GroovyMockery
-import org.junit.Test
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
 import org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer
-import org.gradle.api.internal.ClassGenerator
-import org.gradle.api.internal.AsmBackedClassGenerator
-import org.gradle.api.internal.DomainObjectContext
+import org.gradle.listener.ListenerManager
+import org.gradle.util.JUnit4GroovyMockery
+import org.jmock.integration.junit4.JMock
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.gradle.api.internal.*
+import static org.hamcrest.Matchers.*
+import static org.junit.Assert.assertThat
 
 /**
  * @author Hans Dockter
  */
 
+@RunWith(JMock)
 class DefaultConfigurationHandlerTest {
     private JUnit4GroovyMockery context = new JUnit4GroovyMockery()
 
     private IvyService ivyService = context.mock(IvyService)
     private DomainObjectContext domainObjectContext = context.mock(DomainObjectContext.class)
+    private ListenerManager listenerManager = context.mock(ListenerManager.class)
+    private Instantiator instantiator = new ClassGeneratorBackedInstantiator(new AsmBackedClassGenerator(), new DirectInstantiator())
+    private DefaultConfigurationContainer configurationHandler = instantiator.newInstance(DefaultConfigurationContainer.class, ivyService, instantiator, { name -> name } as DomainObjectContext, listenerManager)
 
-    private ClassGenerator classGenerator = new AsmBackedClassGenerator()
-    private DefaultConfigurationContainer configurationHandler = classGenerator.newInstance(DefaultConfigurationContainer.class, ivyService, classGenerator, { name -> name } as DomainObjectContext)
+    @Before
+    public void setup() {
+        context.checking {
+            ignoring(listenerManager)
+        }
+    }
 
     @Test
     void addsNewConfigurationWhenConfiguringSelf() {

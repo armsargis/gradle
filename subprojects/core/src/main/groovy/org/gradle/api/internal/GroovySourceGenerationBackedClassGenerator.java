@@ -77,8 +77,8 @@ public class GroovySourceGenerationBackedClassGenerator extends AbstractClassGen
 
         public void mixInDynamicAware() {
             src.format("private org.gradle.api.internal.DynamicObjectHelper dynamicObject = new org.gradle.api.internal.DynamicObjectHelper(this, new org.gradle.api.internal.plugins.DefaultConvention())%n");
-            src.format("public void setConvention(org.gradle.api.plugins.Convention convention) { dynamicObject.setConvention(convention); getConventionMapping().setConvention(convention) }%n");
             src.format("public org.gradle.api.plugins.Convention getConvention() { return dynamicObject.getConvention() }%n");
+            src.format("public org.gradle.api.plugins.ExtensionContainer getExtensions() { return getConvention() }%n");
             src.format("public org.gradle.api.internal.DynamicObject getAsDynamicObject() { return dynamicObject }%n");
         }
 
@@ -89,7 +89,7 @@ public class GroovySourceGenerationBackedClassGenerator extends AbstractClassGen
                 src.format("private org.gradle.api.internal.ConventionMapping mapping = new org.gradle.api.internal.ConventionAwareHelper(this, new org.gradle.api.internal.plugins.DefaultConvention())%n");
             }
             src.format("public void setConventionMapping(org.gradle.api.internal.ConventionMapping conventionMapping) { this.mapping = conventionMapping }%n");
-            src.format("public org.gradle.api.internal.ConventionMapping getConventionMapping() { return mapping }%n");
+            src.format("public org.gradle.api.internal.ConventionMapping getConventionMapping() { return mapping ?: new org.gradle.api.internal.ConventionAwareHelper(this) }%n");
         }
 
         public void mixInGroovyObject() {
@@ -121,6 +121,26 @@ public class GroovySourceGenerationBackedClassGenerator extends AbstractClassGen
                 src.format("public %s %s(%s v) { %s r = super.%s(v); %sSet = true; return r; }%n", returnTypeName,
                         setter.getName(), setter.getParameterTypes()[0].getTheClass().getCanonicalName(),
                         returnTypeName, setter.getName(), property.getName());
+            }
+        }
+
+        public void addSetMethod(MetaBeanProperty property) throws Exception {
+            src.format("public void %s(%s v) { %s(v); }%n",
+                    property.getName(),
+                    property.getSetter().getParameterTypes()[0].getTheClass().getCanonicalName(),
+                    property.getSetter().getName());
+        }
+
+        public void overrideSetMethod(MetaBeanProperty property, MetaMethod metaMethod) throws Exception {
+            if (metaMethod.getReturnType().equals(Void.TYPE)) {
+                src.format("public void %s(%s v) { super.%s(v); %sSet = true; }%n", metaMethod.getName(),
+                        metaMethod.getParameterTypes()[0].getTheClass().getCanonicalName(), metaMethod.getName(),
+                        property.getName());
+            } else {
+                String returnTypeName = metaMethod.getReturnType().getCanonicalName();
+                src.format("public %s %s(%s v) { %s r = super.%s(v); %sSet = true; return r; }%n", returnTypeName,
+                        metaMethod.getName(), metaMethod.getParameterTypes()[0].getTheClass().getCanonicalName(),
+                        returnTypeName, metaMethod.getName(), property.getName());
             }
         }
 

@@ -48,10 +48,18 @@ public abstract class XmlPersistableConfigurationObject extends AbstractPersista
     /**
      * Called immediately after the XML file has been read.
      */
-    protected abstract void load(Node xml);
+    protected void load(Node xml) {
+        // no-op
+    }
 
     /**
      * Called immediately before the XML file is to be written.
      */
-    protected abstract void store(Node xml);
+    protected void store(Node xml) {
+        // no-op
+    }
+
+    public void transformAction(Closure action) {
+        xmlTransformer.addAction(action)
+    }
 }

@@ -19,16 +19,17 @@ package org.gradle.tooling.internal.provider;
 import org.gradle.BuildAdapter;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.invocation.Gradle;
+import org.gradle.tooling.internal.protocol.ProjectVersion3;
 
 /**
  * @author Szczepan Faber, @date: 25.03.11
  */
 public class ModelBuildingAdapter extends BuildAdapter {
 
-    private final ModelBuilder builder;
-    private Object eclipseProject;
+    private final BuildsModel builder;
+    private ProjectVersion3 eclipseProject;
 
-    public ModelBuildingAdapter(ModelBuilder builder) {
+    public ModelBuildingAdapter(BuildsModel builder) {
         this.builder = builder;
     }
 
@@ -37,7 +38,7 @@ public class ModelBuildingAdapter extends BuildAdapter {
         eclipseProject = builder.buildAll((GradleInternal) gradle);
     }
 
-    public Object getProject() {
+    public ProjectVersion3 getProject() {
         return eclipseProject;
     }
 }

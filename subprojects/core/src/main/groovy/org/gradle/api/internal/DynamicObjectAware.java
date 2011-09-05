@@ -16,6 +16,7 @@
 package org.gradle.api.internal;
 
 import org.gradle.api.plugins.Convention;
+import org.gradle.api.plugins.ExtensionContainer;
 
 /**
  * <p>Allows properties and method to be added to an object at run-time. Most implementations are generated at run-time
@@ -33,11 +34,11 @@ public interface DynamicObjectAware {
     Convention getConvention();
 
     /**
-     * Sets the convention object used by this dynamic object.
+     * Returns the extensions used by this dynamic object.
      *
-     * @param convention The convention object. Should not be null.
+     * @return The extensions. Never returns null.
      */
-    void setConvention(Convention convention);
+    ExtensionContainer getExtensions();
 
     /**
      * Returns a {@link DynamicObject} which describes all the static and dynamic properties and methods of this

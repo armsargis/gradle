@@ -21,6 +21,7 @@ import org.gradle.integtests.fixtures.HttpServer
 import org.hamcrest.Matchers
 import org.junit.Rule
 import org.junit.Test
+import org.mortbay.jetty.HttpStatus
 
 public class IvyPublishIntegrationTest {
     @Rule
@@ -72,8 +73,8 @@ uploadArchives {
 """
         def uploadedJar = dist.testFile('uploaded.jar')
         def uploadedIvy = dist.testFile('uploaded.xml')
-        server.expectPut('/org.gradle/publish/2/publish-2.jar', uploadedJar)
-        server.expectPut('/org.gradle/publish/2/ivy-2.xml', uploadedIvy)
+        server.expectPut('/org.gradle/publish/2/publish-2.jar', uploadedJar, HttpStatus.ORDINAL_200_OK)
+        server.expectPut('/org.gradle/publish/2/ivy-2.xml', uploadedIvy, HttpStatus.ORDINAL_201_Created)
 
         executer.withTasks("uploadArchives").run()
 
@@ -116,6 +117,7 @@ uploadArchives {
     @Test
     public void reportsFailedPublishToHttpRepository() {
         server.start()
+        server.addBroken("/")
 
         dist.testFile("build.gradle") << """
 apply plugin: 'java'
@@ -131,7 +133,7 @@ uploadArchives {
         def result = executer.withTasks("uploadArchives").runWithFailure()
         result.assertHasDescription('Execution failed for task \':uploadArchives\'.')
         result.assertHasCause('Could not publish configuration \':archives\'.')
-        result.assertThatCause(Matchers.containsString('Received status code 404 from server: Not Found'))
+        result.assertThatCause(Matchers.containsString('Received status code 500 from server: broken'))
 
         server.stop()
 

@@ -18,9 +18,11 @@ package org.gradle.api.internal.artifacts.repositories;
 import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.apache.ivy.plugins.resolver.FileSystemResolver;
 import org.apache.ivy.plugins.resolver.RepositoryResolver;
-import org.apache.ivy.plugins.resolver.URLResolver;
+import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.dsl.IvyArtifactRepository;
+import org.gradle.api.internal.artifacts.ivyservice.LocalFileRepositoryCacheManager;
 import org.gradle.api.internal.file.FileResolver;
+import org.jfrog.wharf.ivy.resolver.UrlWharfResolver;
 
 import java.net.URI;
 import java.util.Collection;
@@ -39,6 +41,9 @@ public class DefaultIvyArtifactRepository implements IvyArtifactRepository, Arti
     }
 
     public void createResolvers(Collection<DependencyResolver> resolvers) {
+        if (artifactPatterns.isEmpty()) {
+            throw new InvalidUserDataException("You must specify at least one artifact pattern for an Ivy repository.");
+        }
         for (String artifactPattern : artifactPatterns) {
             // get rid of the ivy [] token, as [ ] are not valid URI characters
             int pos = artifactPattern.indexOf('[');
@@ -64,11 +69,13 @@ public class DefaultIvyArtifactRepository implements IvyArtifactRepository, Arti
     }
 
     private RepositoryResolver url() {
-        return new URLResolver();
+        return new UrlWharfResolver();
     }
 
     private RepositoryResolver file() {
-        return new FileSystemResolver();
+        FileSystemResolver resolver = new FileSystemResolver();
+        resolver.setRepositoryCacheManager(new LocalFileRepositoryCacheManager(name));
+        return resolver;
     }
 
     private RepositoryResolver http() {

@@ -16,21 +16,9 @@
 
 import org.gradle.build.GenerateReleasesXml
 
-apply plugin: 'groovy'
-apply from: "$rootDir/gradle/integTest.gradle"
-
 configurations {
-    testFixtures
-    testFixturesRuntime {
-        extendsFrom testFixtures, testRuntime
-    }
-    integTestFixtures {
-        extendsFrom testFixtures
-    }
-    integTestFixturesRuntime {
-        extendsFrom integTestFixtures, integTestRuntime
-    }
     excludedInEclipse
+    reports
 }
 
 dependencies {
@@ -42,6 +30,8 @@ dependencies {
 
     publishCompile libraries.slf4j_api
 
+    compile project(":cli")
+
     compile libraries.ant,
             libraries.logback_classic,
             libraries.logback_core,
@@ -50,6 +40,7 @@ dependencies {
             libraries.commons_lang,
             "commons-codec:commons-codec:1.2@jar",
             libraries.guava,
+            libraries.jcip,
             "commons-collections:commons-collections:3.2.1@jar",
             "slide:webdavlib:2.0@jar",
             libraries.asm_all,
@@ -60,26 +51,25 @@ dependencies {
 
     runtime libraries.log4j_to_slf4j, libraries.jcl_to_slf4j
 
-    // tried with scope 'runtime' but this gives a cyclic task dependency
-    testRuntime project(":coreImpl")
-    testRuntime 'xerces:xercesImpl:2.9.1'
-
-    testCompile libraries.xmlunit
-
     compile libraries.ant_launcher
 
-    integTestCompile libraries.jetty_depends
-
-    testFixtures sourceSets.test.output, sourceSets.main.output, project(':coreImpl')
-    integTestFixtures sourceSets.integTest.output
-
     excludedInEclipse project(":coreImpl")
+
+    testFixturesCompile project(":internalTesting")
+
+    reports 'css3-pie:css3-pie:1.0beta3'
 }
 
 task releasesResource(type: GenerateReleasesXml) {
     destFile = new File(generatedResourcesDir, "org/gradle/releases.xml")
 }
 sourceSets.main.output.dir generatedResourcesDir, buildBy: releasesResource
+
+task reportResources(type: Copy) {
+    from configurations.reports
+    into "$generatedResourcesDir/org/gradle/reporting"
+}
+sourceSets.main.output.dir generatedResourcesDir, buildBy: reportResources
 
 [compileGroovy, compileTestGroovy]*.groovyOptions*.fork(memoryInitialSize: '128M', memoryMaximumSize: '1G')
 

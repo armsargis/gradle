@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 the original author or authors.
+ * Copyright 2011 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,16 @@
 package org.gradle.api.internal;
 
 import groovy.lang.Closure;
+import org.gradle.api.DomainObjectSet;
+import org.gradle.api.internal.collections.CollectionEventRegister;
+import org.gradle.api.internal.collections.CollectionFilter;
+import org.gradle.api.internal.collections.FilteredSet;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 
-import org.gradle.api.DomainObjectSet;
-import org.gradle.api.internal.collections.FilteredSet;
-import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.CollectionEventRegister;
-
-import java.util.Set;
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class DefaultDomainObjectSet<T> extends DefaultDomainObjectCollection<T> implements DomainObjectSet<T> {
 
@@ -46,24 +45,33 @@ public class DefaultDomainObjectSet<T> extends DefaultDomainObjectCollection<T> 
         super(type, store, eventRegister);
     }
 
+    @Override
     protected <S extends T> DefaultDomainObjectSet<S> filtered(CollectionFilter<S> filter) {
         return new DefaultDomainObjectSet<S>(this, filter);
     }
 
+    @Override
     protected <S extends T> Set<S> filteredStore(CollectionFilter<S> filter) {
         return new FilteredSet<T, S>(this, filter);
     }
 
+    @Override
     public <S extends T> DomainObjectSet<S> withType(Class<S> type) {
         return filtered(createFilter(type));
     }
 
+    @Override
     public DomainObjectSet<T> matching(Spec<? super T> spec) {
         return filtered(createFilter(spec));
     }
 
+    @Override
     public DomainObjectSet<T> matching(Closure spec) {
         return matching(Specs.<T>convertClosureToSpec(spec));
     }
 
+    @Override
+    public Set<T> findAll(Closure cl) {
+        return findAll(cl, new LinkedHashSet<T>());
+    }
 }

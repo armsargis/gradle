@@ -17,14 +17,13 @@ package org.gradle.api.internal;
 
 import groovy.lang.Closure;
 import groovy.lang.MissingPropertyException;
-import org.gradle.api.Namer;
-import org.gradle.api.Action;
-import org.gradle.api.DomainObjectCollection;
-import org.gradle.api.Rule;
-import org.gradle.api.UnknownDomainObjectException;
+import org.gradle.api.*;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
-import org.gradle.util.*;
+import org.gradle.util.ConfigureUtil;
+import org.gradle.util.GUtil;
+import org.gradle.util.HelperUtil;
+import org.gradle.util.TestClosure;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
@@ -33,17 +32,18 @@ import org.junit.runner.RunWith;
 
 import java.util.Iterator;
 
-import static org.gradle.util.HelperUtil.*;
-import static org.gradle.util.WrapUtil.*;
+import static org.gradle.util.HelperUtil.call;
+import static org.gradle.util.HelperUtil.toClosure;
+import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
 
 @RunWith(JMock.class)
 public class DefaultNamedDomainObjectSetTest {
-    private final ClassGenerator classGenerator = new AsmBackedClassGenerator();
+    private final Instantiator instantiator = new ClassGeneratorBackedInstantiator(new AsmBackedClassGenerator(), new DirectInstantiator());
     private final Namer<Bean> namer = new Namer<Bean>() { public String determineName(Bean bean) { return bean.name; } };
-    private final DefaultNamedDomainObjectSet<Bean> container = classGenerator.newInstance(DefaultNamedDomainObjectSet.class, Bean.class, classGenerator, namer);
+    private final DefaultNamedDomainObjectSet<Bean> container = instantiator.newInstance(DefaultNamedDomainObjectSet.class, Bean.class, instantiator, namer);
     private final JUnit4Mockery context = new JUnit4Mockery();
 
     @Test
@@ -464,23 +464,47 @@ public class DefaultNamedDomainObjectSetTest {
         container.add(bean);
     }
 
-    /*
-        Commented out because there is no longer an implicit replace due to domain object collections
-        now implementing the semantics of collection, which is incompatible with this. - LD.
-    */
-    // @Test
-    // public void callsRemoveActionWhenObjectReplaced() {
-    //     final Action<Bean> action = context.mock(Action.class);
-    //     final Bean bean = new Bean();
-    // 
-    //     context.checking(new Expectations() {{
-    //         one(action).execute(bean);
-    //     }});
-    // 
-    //     container.whenObjectRemoved(action);
-    //     container.add(bean);
-    //     container.add(new Bean());
-    // }
+    @Test
+    public void doesNotCallActionWhenDuplicateObjectAdded() {
+        final Action<Bean> action = context.mock(Action.class);
+        final Bean bean = new Bean();
+
+        container.add(bean);
+
+        container.whenObjectAdded(action);
+        container.add(bean);
+    }
+
+    @Test
+    public void callsActionWhenObjectsAdded() {
+        final Action<Bean> action = context.mock(Action.class);
+        final Bean bean = new Bean();
+        final Bean bean2 = new Bean("other");
+
+        context.checking(new Expectations() {{
+            one(action).execute(bean);
+            one(action).execute(bean2);
+        }});
+
+        container.whenObjectAdded(action);
+        container.addAll(toList(bean, bean2));
+    }
+
+    @Test
+    public void doesNotCallActionWhenDuplicateObjectsAdded() {
+        final Action<Bean> action = context.mock(Action.class);
+        final Bean bean = new Bean();
+        final Bean bean2 = new Bean("other");
+
+        container.add(bean);
+
+        context.checking(new Expectations() {{
+            one(action).execute(bean2);
+        }});
+
+        container.whenObjectAdded(action);
+        container.addAll(toList(bean, bean2));
+    }
 
     @Test
     public void callsActionWhenObjectRemoved() {
@@ -494,6 +518,14 @@ public class DefaultNamedDomainObjectSetTest {
         container.whenObjectRemoved(action);
         container.add(bean);
         container.removeByName("bean");
+    }
+
+    @Test
+    public void doesNotCallActionWhenUnknownObjectRemoved() {
+        final Action<Bean> action = context.mock(Action.class);
+
+        container.whenObjectRemoved(action);
+        container.remove(new Bean());
     }
 
     @Test

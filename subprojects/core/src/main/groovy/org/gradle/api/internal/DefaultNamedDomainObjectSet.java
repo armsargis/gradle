@@ -16,61 +16,72 @@
 package org.gradle.api.internal;
 
 import groovy.lang.Closure;
-import org.gradle.api.*;
+import org.gradle.api.Named;
+import org.gradle.api.NamedDomainObjectSet;
+import org.gradle.api.Namer;
+import org.gradle.api.internal.collections.CollectionEventRegister;
+import org.gradle.api.internal.collections.CollectionFilter;
+import org.gradle.api.internal.collections.FilteredSet;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 
-import java.util.*;
-
-import org.gradle.api.internal.collections.FilteredSet;
-import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.CollectionEventRegister;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class DefaultNamedDomainObjectSet<T> extends DefaultNamedDomainObjectCollection<T> implements NamedDomainObjectSet<T> {
 
-    public DefaultNamedDomainObjectSet(Class<T> type, ClassGenerator classGenerator, Namer<? super T> namer) {
-        super(type, new TreeSet(new Namer.Comparator(namer)), classGenerator, namer);
+    public DefaultNamedDomainObjectSet(Class<T> type, Instantiator instantiator, Namer<? super T> namer) {
+        super(type, new TreeSet(new Namer.Comparator(namer)), instantiator, namer);
+    }
+
+    public DefaultNamedDomainObjectSet(Class<T> type, Instantiator instantiator) {
+        this(type, instantiator, Named.Namer.forType(type));
     }
 
     /**
      * Subclasses using this constructor must ensure that the {@code store} uses a name based equality strategy as per the contract on NamedDomainObjectContainer.
      */
-    protected DefaultNamedDomainObjectSet(Class<T> type, Set<T> store, CollectionEventRegister<T> eventRegister, ClassGenerator classGenerator, Namer<? super T> namer) {
-        super(type, store, eventRegister, classGenerator, namer);
+    protected DefaultNamedDomainObjectSet(Class<T> type, Set<T> store, CollectionEventRegister<T> eventRegister, Instantiator instantiator, Namer<? super T> namer) {
+        super(type, store, eventRegister, instantiator, namer);
     }
 
-    // should be protected, but use of teh class generator forces it to be public
-    public DefaultNamedDomainObjectSet(DefaultNamedDomainObjectSet<? super T> collection, CollectionFilter<T> filter, ClassGenerator classGenerator, Namer<? super T> namer) {
-        this(filter.getType(), collection.filteredStore(filter), collection.filteredEvents(filter), classGenerator, namer);
+    // should be protected, but use of the class generator forces it to be public
+    public DefaultNamedDomainObjectSet(DefaultNamedDomainObjectSet<? super T> collection, CollectionFilter<T> filter, Instantiator instantiator, Namer<? super T> namer) {
+        this(filter.getType(), collection.filteredStore(filter), collection.filteredEvents(filter), instantiator, namer);
     }
 
+    @Override
     protected <S extends T> DefaultNamedDomainObjectSet<S> filtered(CollectionFilter<S> filter) {
-        return getClassGenerator().newInstance(DefaultNamedDomainObjectSet.class, this, filter, getClassGenerator(), getNamer());
+        return getInstantiator().newInstance(DefaultNamedDomainObjectSet.class, this, filter, getInstantiator(), getNamer());
     }
 
     protected <S extends T> Set<S> filteredStore(CollectionFilter<S> filter) {
         return new FilteredSet<T, S>(this, filter);
     }
 
+    @Override
     public String getDisplayName() {
         return String.format("%s set", getTypeDisplayName());
     }
 
+    @Override
     public <S extends T> NamedDomainObjectSet<S> withType(Class<S> type) {
         return filtered(createFilter(type));
     }
 
+    @Override
     public NamedDomainObjectSet<T> matching(Spec<? super T> spec) {
         return filtered(createFilter(spec));
     }
 
+    @Override
     public NamedDomainObjectSet<T> matching(Closure spec) {
         return matching(Specs.<T>convertClosureToSpec(spec));
     }
 
-    // Overridden to allow the backing store to enforce uniqueness.
-    public boolean add(T o) {
-        return super.add(o);
+    @Override
+    public Set<T> findAll(Closure cl) {
+        return findAll(cl, new LinkedHashSet<T>());
     }
-
 }

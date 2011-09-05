@@ -16,15 +16,13 @@
 
 package org.gradle.api.internal.artifacts.repositories;
 
-import org.apache.ivy.plugins.resolver.*;
+import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.artifacts.ResolverContainer;
-import org.gradle.api.artifacts.dsl.IvyArtifactRepository;
+import org.gradle.api.artifacts.dsl.*;
 import org.gradle.api.artifacts.maven.*;
 import org.gradle.api.internal.Factory;
-import org.gradle.api.internal.artifacts.ivyservice.GradleIBiblioResolver;
-import org.gradle.api.internal.artifacts.ivyservice.LocalFileRepositoryCacheManager;
+import org.gradle.api.internal.Instantiator;
 import org.gradle.api.internal.artifacts.ResolverFactory;
 import org.gradle.api.internal.artifacts.publish.maven.*;
 import org.gradle.api.internal.artifacts.publish.maven.deploy.BaseMavenInstaller;
@@ -33,8 +31,8 @@ import org.gradle.api.internal.artifacts.publish.maven.deploy.DefaultArtifactPom
 import org.gradle.api.internal.artifacts.publish.maven.deploy.groovy.DefaultGroovyMavenDeployer;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.logging.LoggingManagerInternal;
+import org.gradle.util.ConfigureUtil;
 
-import java.io.File;
 import java.util.Map;
 
 /**
@@ -44,112 +42,86 @@ public class DefaultResolverFactory implements ResolverFactory {
     private final Factory<LoggingManagerInternal> loggingManagerFactory;
     private final MavenFactory mavenFactory;
     private final LocalMavenCacheLocator localMavenCacheLocator;
+    private final FileResolver fileResolver;
+    private final Instantiator instantiator;
 
-    public DefaultResolverFactory(Factory<LoggingManagerInternal> loggingManagerFactory, MavenFactory mavenFactory, LocalMavenCacheLocator localMavenCacheLocator) {
+    public DefaultResolverFactory(Factory<LoggingManagerInternal> loggingManagerFactory, MavenFactory mavenFactory, LocalMavenCacheLocator localMavenCacheLocator, FileResolver fileResolver, Instantiator instantiator) {
         this.loggingManagerFactory = loggingManagerFactory;
         this.mavenFactory = mavenFactory;
         this.localMavenCacheLocator = localMavenCacheLocator;
+        this.fileResolver = fileResolver;
+        this.instantiator = instantiator;
     }
 
-    public DependencyResolver createResolver(Object userDescription) {
-        DependencyResolver result;
+    public ArtifactRepository createRepository(Object userDescription) {
+        if (userDescription instanceof ArtifactRepository) {
+            return (ArtifactRepository) userDescription;
+        }
+
         if (userDescription instanceof String) {
-            result = createMavenRepoResolver((String) userDescription, (String) userDescription);
+            MavenArtifactRepository repository = createMavenRepository();
+            repository.setUrl(userDescription);
+            return repository;
         } else if (userDescription instanceof Map) {
-            Map<String, String> userDescriptionMap = (Map<String, String>) userDescription;
-            result = createMavenRepoResolver(userDescriptionMap.get(ResolverContainer.RESOLVER_NAME),
-                    userDescriptionMap.get(ResolverContainer.RESOLVER_URL));
-        } else if (userDescription instanceof DependencyResolver) {
+            Map<String, ?> userDescriptionMap = (Map<String, ?>) userDescription;
+            MavenArtifactRepository repository = createMavenRepository();
+            ConfigureUtil.configureByMap(userDescriptionMap, repository);
+            return repository;
+        }
+        
+        DependencyResolver result;
+        if (userDescription instanceof DependencyResolver) {
             result = (DependencyResolver) userDescription;
         } else {
-            throw new InvalidUserDataException("Illegal Resolver type");
+            throw new InvalidUserDataException(String.format("Cannot create a DependencyResolver instance from %s", userDescription));
         }
-        return result;
+        return new FixedResolverArtifactRepository(result);
     }
 
-    public FileSystemResolver createFlatDirResolver(String name, File... roots) {
-        FileSystemResolver resolver = new FileSystemResolver();
-        resolver.setName(name);
-        for (File root : roots) {
-            resolver.addArtifactPattern(root.getAbsolutePath() + "/[artifact]-[revision](-[classifier]).[ext]");
-            resolver.addArtifactPattern(root.getAbsolutePath() + "/[artifact](-[classifier]).[ext]");
-        }
-        resolver.setValidate(false);
-        resolver.setRepositoryCacheManager(new LocalFileRepositoryCacheManager(name));
-        return resolver;
+    public FlatDirectoryArtifactRepository createFlatDirRepository() {
+        return instantiator.newInstance(DefaultFlatDirArtifactRepository.class, fileResolver);
     }
 
-    public AbstractResolver createMavenLocalResolver(String name) {
-        String cacheDir = localMavenCacheLocator.getLocalMavenCache().toURI().toString();
-        return createMavenRepoResolver(name, cacheDir);
+    public MavenArtifactRepository createMavenLocalRepository() {
+        MavenArtifactRepository mavenRepository = createMavenRepository();
+        mavenRepository.setUrl(localMavenCacheLocator.getLocalMavenCache());
+        return mavenRepository;
     }
 
-    public AbstractResolver createMavenRepoResolver(String name, String root, String... jarRepoUrls) {
-        GradleIBiblioResolver iBiblioResolver = createIBiblioResolver(name, root);
-        if (jarRepoUrls.length == 0) {
-            iBiblioResolver.setDescriptor(IBiblioResolver.DESCRIPTOR_OPTIONAL);
-            return iBiblioResolver;
-        }
-        iBiblioResolver.setName(iBiblioResolver.getName() + "_poms");
-        URLResolver urlResolver = createUrlResolver(name, root, jarRepoUrls);
-        return createDualResolver(name, iBiblioResolver, urlResolver);
-    }
-
-    private GradleIBiblioResolver createIBiblioResolver(String name, String root) {
-        GradleIBiblioResolver iBiblioResolver = new GradleIBiblioResolver();
-        iBiblioResolver.setUsepoms(true);
-        iBiblioResolver.setName(name);
-        iBiblioResolver.setRoot(root);
-        iBiblioResolver.setPattern(ResolverContainer.MAVEN_REPO_PATTERN);
-        iBiblioResolver.setM2compatible(true);
-        iBiblioResolver.setUseMavenMetadata(true);
-        return iBiblioResolver;
-    }
-
-    private URLResolver createUrlResolver(String name, String root, String... jarRepoUrls) {
-        URLResolver urlResolver = new URLResolver();
-        urlResolver.setName(name + "_jars");
-        urlResolver.setM2compatible(true);
-        urlResolver.addArtifactPattern(root + '/' + ResolverContainer.MAVEN_REPO_PATTERN);
-        for (String jarRepoUrl : jarRepoUrls) {
-            urlResolver.addArtifactPattern(jarRepoUrl + '/' + ResolverContainer.MAVEN_REPO_PATTERN);
-        }
-        return urlResolver;
-    }
-
-    private DualResolver createDualResolver(String name, GradleIBiblioResolver iBiblioResolver, URLResolver urlResolver) {
-        DualResolver dualResolver = new DualResolver();
-        dualResolver.setName(name);
-        dualResolver.setIvyResolver(iBiblioResolver);
-        dualResolver.setArtifactResolver(urlResolver);
-        dualResolver.setDescriptor(DualResolver.DESCRIPTOR_OPTIONAL);
-        return dualResolver;
+    public MavenArtifactRepository createMavenCentralRepository() {
+        MavenArtifactRepository mavenRepository = createMavenRepository();
+        mavenRepository.setUrl(RepositoryHandler.MAVEN_CENTRAL_URL);
+        return mavenRepository;
     }
 
     // todo use MavenPluginConvention pom factory after modularization is done
 
-    public GroovyMavenDeployer createMavenDeployer(String name, MavenPomMetaInfoProvider pomMetaInfoProvider,
+    public GroovyMavenDeployer createMavenDeployer(MavenPomMetaInfoProvider pomMetaInfoProvider,
                                                    ConfigurationContainer configurationContainer,
                                                    Conf2ScopeMappingContainer scopeMapping, FileResolver fileResolver) {
         PomFilterContainer pomFilterContainer = createPomFilterContainer(
                 mavenFactory.createMavenPomFactory(configurationContainer, scopeMapping, fileResolver));
-        return new DefaultGroovyMavenDeployer(name, pomFilterContainer, createArtifactPomContainer(
+        return new DefaultGroovyMavenDeployer(pomFilterContainer, createArtifactPomContainer(
                 pomMetaInfoProvider, pomFilterContainer, createArtifactPomFactory()), loggingManagerFactory.create());
     }
 
     // todo use MavenPluginConvention pom factory after modularization is done
 
-    public MavenResolver createMavenInstaller(String name, MavenPomMetaInfoProvider pomMetaInfoProvider,
+    public MavenResolver createMavenInstaller(MavenPomMetaInfoProvider pomMetaInfoProvider,
                                               ConfigurationContainer configurationContainer,
                                               Conf2ScopeMappingContainer scopeMapping, FileResolver fileResolver) {
         PomFilterContainer pomFilterContainer = createPomFilterContainer(
                 mavenFactory.createMavenPomFactory(configurationContainer, scopeMapping, fileResolver));
-        return new BaseMavenInstaller(name, pomFilterContainer, createArtifactPomContainer(pomMetaInfoProvider,
+        return new BaseMavenInstaller(pomFilterContainer, createArtifactPomContainer(pomMetaInfoProvider,
                 pomFilterContainer, createArtifactPomFactory()), loggingManagerFactory.create());
     }
 
-    public IvyArtifactRepository createIvyRepository(FileResolver resolver) {
-        return new DefaultIvyArtifactRepository(resolver);
+    public IvyArtifactRepository createIvyRepository() {
+        return instantiator.newInstance(DefaultIvyArtifactRepository.class, fileResolver);
+    }
+
+    public MavenArtifactRepository createMavenRepository() {
+        return instantiator.newInstance(DefaultMavenArtifactRepository.class, fileResolver);
     }
 
     private PomFilterContainer createPomFilterContainer(Factory<MavenPom> mavenPomFactory) {

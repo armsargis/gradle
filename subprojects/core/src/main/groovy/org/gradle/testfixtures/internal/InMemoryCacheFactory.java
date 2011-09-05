@@ -16,41 +16,74 @@
 package org.gradle.testfixtures.internal;
 
 import org.gradle.CacheUsage;
+import org.gradle.api.Action;
 import org.gradle.api.internal.changedetection.InMemoryIndexedCache;
 import org.gradle.cache.*;
+import org.gradle.cache.internal.*;
+import org.gradle.util.UncheckedException;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 public class InMemoryCacheFactory implements CacheFactory {
-    public void close(PersistentCache cache) {
+    public PersistentCache openStore(File storeDir, FileLockManager.LockMode lockMode, CrossVersionMode crossVersionMode, Action<? super PersistentCache> initializer) throws CacheOpenException {
+        return open(storeDir, CacheUsage.ON, Collections.<String, Object>emptyMap(), lockMode, crossVersionMode, initializer);
     }
 
-    public PersistentCache open(final File cacheDir, CacheUsage usage, Map<String, ?> properties) {
+    public PersistentCache open(File cacheDir, CacheUsage usage, Map<String, ?> properties, FileLockManager.LockMode lockMode, CrossVersionMode crossVersionMode, Action<? super PersistentCache> initializer) {
         cacheDir.mkdirs();
-        return new PersistentCache() {
-            public File getBaseDir() {
-                return cacheDir;
-            }
+        InMemoryCache cache = new InMemoryCache(cacheDir);
+        if (initializer != null) {
+            initializer.execute(cache);
+        }
+        return cache;
+    }
 
-            public boolean isValid() {
-                return false;
-            }
+    public <K, V> PersistentIndexedCache<K, V> openIndexedCache(File cacheDir, CacheUsage usage, Map<String, ?> properties, FileLockManager.LockMode lockMode, CrossVersionMode crossVersionMode, Serializer<V> serializer) {
+        return new InMemoryIndexedCache<K, V>();
+    }
 
-            public void markValid() {
-            }
+    public <E> PersistentStateCache<E> openStateCache(File cacheDir, CacheUsage usage, Map<String, ?> properties, FileLockManager.LockMode lockMode, CrossVersionMode crossVersionMode, Serializer<E> serializer) {
+        cacheDir.mkdirs();
+        return new SimpleStateCache<E>(new File(cacheDir, "state.bin"), new NoOpFileLock(), new DefaultSerializer<E>());
+    }
 
-            public <K, V> PersistentIndexedCache<K, V> openIndexedCache(Serializer<V> serializer) {
-                return new InMemoryIndexedCache<K, V>();
-            }
+    private static class NoOpFileLock implements FileLock {
+        public boolean getUnlockedCleanly() {
+            return true;
+        }
 
-            public <K, V> PersistentIndexedCache<K, V> openIndexedCache() {
-                return new InMemoryIndexedCache<K, V>();
-            }
+        public boolean isLockFile(File file) {
+            return false;
+        }
 
-            public <T> PersistentStateCache<T> openStateCache() {
-                return new SimpleStateCache<T>(this, new DefaultSerializer<T>());
+        public <T> T readFromFile(Callable<T> action) throws LockTimeoutException {
+            try {
+                return action.call();
+            } catch (Exception e) {
+                throw UncheckedException.asUncheckedException(e);
             }
-        };
+        }
+
+        public void writeToFile(Runnable action) throws LockTimeoutException {
+            action.run();
+        }
+
+        public void close() {
+        }
+    }
+
+    private static class InMemoryCache implements PersistentCache {
+        private final File cacheDir;
+
+        public InMemoryCache(File cacheDir) {
+            this.cacheDir = cacheDir;
+        }
+
+        public File getBaseDir() {
+            return cacheDir;
+        }
     }
 }

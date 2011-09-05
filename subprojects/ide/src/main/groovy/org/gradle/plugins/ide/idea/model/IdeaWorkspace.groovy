@@ -20,7 +20,7 @@ import org.gradle.plugins.ide.api.XmlFileContentMerger
 import org.gradle.util.ConfigureUtil
 
 /**
- * Enables fine-tuning workspace details (*.iws file) of the Idea plugin
+ * Enables fine-tuning workspace details (*.iws file) of the IDEA plugin.
  * <p>
  * At the moment, the only practical way of manipulating the resulting content is via the withXml hook:
  *
@@ -38,7 +38,7 @@ import org.gradle.util.ConfigureUtil
 class IdeaWorkspace {
 
     /**
-     * Enables advanced manipulation of the output xml
+     * Enables advanced manipulation of the output xml.
      * <p>
      * For example see docs for {@link IdeaWorkspace}
      *
@@ -49,9 +49,19 @@ class IdeaWorkspace {
     }
 
     /**
-     * Enables advanced manipulation of the output xml
+     * Enables advanced manipulation of the output xml.
      * <p>
      * For example see docs for {@link IdeaWorkspace}
      */
     XmlFileContentMerger iws
+
+    void mergeXmlWorkspace(Workspace xmlWorkspace) {
+        iws.beforeMerged.execute(xmlWorkspace)
+
+        //we don't merge anything in the iws, yet.
+        //I kept the logic for the sake of consistency
+        // and compatibility with pre M4 ways of configuring IDEA information.
+
+        iws.whenMerged.execute(xmlWorkspace)
+    }
 }

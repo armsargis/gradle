@@ -21,8 +21,8 @@ import static org.hamcrest.Matchers.*
 import org.junit.Ignore
 
 class AbstractNamedDomainObjectContainerTest {
-    private final ClassGenerator classGenerator = new AsmBackedClassGenerator()
-    private final AbstractNamedDomainObjectContainer container = classGenerator.newInstance(TestContainer.class, classGenerator)
+    private final Instantiator instantiator = new ClassGeneratorBackedInstantiator(new AsmBackedClassGenerator(), new DirectInstantiator())
+    private final AbstractNamedDomainObjectContainer container = instantiator.newInstance(TestContainer.class, instantiator)
 
     @Test
     public void canAddObjectWithName() {
@@ -47,7 +47,7 @@ class AbstractNamedDomainObjectContainerTest {
             container.create('obj')
             fail()
         } catch (org.gradle.api.InvalidUserDataException e) {
-            assertThat(e.message, equalTo('Cannot add TestObject \'obj\' as a TestObject with that name already exists.'))
+            assertThat(e.message, equalTo('Cannot add a TestObject with name \'obj\' as a TestObject with that name already exists.'))
         }
     }
 

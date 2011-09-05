@@ -84,7 +84,8 @@ public class TaskDefinitionIntegrationTest extends AbstractIntegrationTest {
                 "a = task('stringWithOptionsAndAction', description: 'description') << { }",
                 "a = task(withOptions, description: 'description')",
                 "a = task(withOptionsAndAction, description: 'description') << { }",
-                "a = task(anotherWithAction).doFirst\n{}", "task all(dependsOn: tasks.all)");
+                "a = task(anotherWithAction).doFirst\n{}",
+                "task all(dependsOn: tasks as List)");
         inTestDirectory().withTasks("all").run().assertTasksExecuted(":anotherWithAction", ":dynamic", ":emptyOptions",
                 ":nothing", ":string", ":stringWithAction", ":stringWithOptions", ":stringWithOptionsAndAction",
                 ":withAction", ":withOptions", ":withOptionsAndAction", ":all");
@@ -105,7 +106,7 @@ public class TaskDefinitionIntegrationTest extends AbstractIntegrationTest {
                 "[withDescription, asMethod].each {",
                 "    assert 'value' == it.description",
                 "}",
-                "task all(dependsOn: tasks.all)",
+                "task all(dependsOn: tasks as List)",
                 "class TestTask extends DefaultTask { String property }");
         inTestDirectory().withTasks("all").run();
     }
@@ -130,7 +131,7 @@ public class TaskDefinitionIntegrationTest extends AbstractIntegrationTest {
                 "cl.call('i')",
                 "assert 'value' == f.property",
                 "assert 'value' == i.property",
-                "task all(dependsOn: tasks.all)");
+                "task all(dependsOn: tasks as List)");
         inTestDirectory().withTasks("all").run().assertTasksExecuted(":a", ":d", ":e", ":f", ":g", ":h", ":i", ":all");
     }
 }

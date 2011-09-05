@@ -17,6 +17,7 @@ package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.BasicGradleDistribution
 import org.gradle.integtests.fixtures.GradleDistribution
+import org.gradle.integtests.fixtures.GradleDistributionExecuter
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.util.Jvm
 import org.junit.Rule
@@ -33,22 +34,23 @@ class CrossVersionCompatibilityIntegrationTest {
     private final BasicGradleDistribution gradle10Milestone1 = dist.previousVersion('1.0-milestone-1')
     private final BasicGradleDistribution gradle10Milestone2 = dist.previousVersion('1.0-milestone-2')
     private final BasicGradleDistribution gradle10Milestone3 = dist.previousVersion('1.0-milestone-3')
+    private final BasicGradleDistribution gradle10Milestone4 = dist.previousVersion('1.0-milestone-4')
 
     @Test
     public void canBuildJavaProject() {
         dist.testFile('buildSrc/src/main/groovy').assertIsDir()
 
         // Upgrade and downgrade from previous version to current version and back again
-        eachVersion([gradle08, gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3]) { version ->
-            version.executer().inDirectory(dist.testDir).withTasks('build').run()
-            dist.executer().inDirectory(dist.testDir).withTasks('build').run()
-            version.executer().inDirectory(dist.testDir).withTasks('build').run()
+        eachVersion([gradle08, gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3, gradle10Milestone4]) { version ->
+            executer(version).inDirectory(dist.testDir).withTasks('build').run()
+            executer(dist).inDirectory(dist.testDir).withTasks('build').run()
+            executer(version).inDirectory(dist.testDir).withTasks('build').run()
         }
     }
 
     @Test
     public void canUseWrapperFromPreviousVersionToRunCurrentVersion() {
-        eachVersion([gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3]) { version ->
+        eachVersion([gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3, gradle10Milestone4]) { version ->
             if (!version.wrapperCanExecute(dist.version)) {
                 println "skipping $version as its wrapper cannot execute current version ${dist.version}"
                 return false
@@ -59,16 +61,24 @@ class CrossVersionCompatibilityIntegrationTest {
 
     @Test
     public void canUseWrapperFromCurrentVersionToRunPreviousVersion() {
-        eachVersion([gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3]) { version ->
+        eachVersion([gradle09rc3, gradle09, gradle091, gradle092, gradle10Milestone1, gradle10Milestone2, gradle10Milestone3, gradle10Milestone4]) { version ->
             checkWrapperWorksWith(dist, version)
         }
     }
 
     def checkWrapperWorksWith(BasicGradleDistribution wrapperGenVersion, BasicGradleDistribution executionVersion) {
         println "use wrapper from $wrapperGenVersion to build using $executionVersion"
-        wrapperGenVersion.executer().withTasks('wrapper').withArguments("-PdistZip=$executionVersion.binDistribution.absolutePath", "-PdistVersion=$executionVersion.version").run()
-        def result = wrapperGenVersion.executer().usingExecutable('gradlew').withTasks('hello').run()
+        executer(wrapperGenVersion).withTasks('wrapper').withArguments("-PdistZip=$executionVersion.binDistribution.absolutePath", "-PdistVersion=$executionVersion.version").run()
+        def result = executer(wrapperGenVersion).usingExecutable('gradlew').withTasks('hello').run()
         assert result.output.contains("hello from $executionVersion.version")
+    }
+
+    def executer(BasicGradleDistribution dist) {
+        def executer = dist.executer();
+        if (executer instanceof GradleDistributionExecuter) {
+            executer.withDeprecationChecksDisabled()
+        }
+        return executer;
     }
 
     def eachVersion(Iterable<BasicGradleDistribution> versions, Closure cl) {

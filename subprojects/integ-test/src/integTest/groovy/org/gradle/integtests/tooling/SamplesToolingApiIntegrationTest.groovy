@@ -24,7 +24,7 @@ class SamplesToolingApiIntegrationTest extends Specification {
     @Rule public final GradleDistribution distribution = new GradleDistribution()
     @Rule public final Sample sample = new Sample()
 
-    @UsesSample('toolingApi/model')
+    @UsesSample('toolingApi/eclipse')
     def canUseToolingApiToDetermineProjectClasspath() {
         def projectDir = sample.dir
         Properties props = new Properties()
@@ -59,6 +59,24 @@ class SamplesToolingApiIntegrationTest extends Specification {
 
         then:
         result.output.contains("Welcome to Gradle")
+    }
+
+    @UsesSample('toolingApi/idea')
+    def buildsIdeaModel() {
+        def projectDir = sample.dir
+        Properties props = new Properties()
+        props['toolingApiRepo'] = distribution.libsRepo.toURI().toString()
+        props['gradleDistribution'] = distribution.gradleHomeDir.toString()
+        projectDir.file('gradle.properties').withOutputStream {outstr ->
+            props.store(outstr, 'props')
+        }
+        projectDir.file('settings.gradle').text = '// to stop search upwards'
+
+        when:
+        run(projectDir)
+
+        then:
+        noExceptionThrown()
     }
 
     private ExecutionResult run(dir) {

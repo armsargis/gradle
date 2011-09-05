@@ -16,39 +16,44 @@
 package org.gradle.api.internal.artifacts
 
 import org.gradle.StartParameter
-import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.maven.MavenFactory
-import org.gradle.api.internal.ClassGenerator
-import org.gradle.api.internal.DomainObjectContext
-import org.gradle.api.internal.IConventionAware
+import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal
 import org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider
 import org.gradle.api.internal.artifacts.dsl.DefaultRepositoryHandler
 import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder
-
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.project.ServiceRegistry
+import org.gradle.cache.CacheRepository
+import org.gradle.listener.ListenerManager
 import org.gradle.logging.LoggingManagerInternal
+import org.gradle.logging.ProgressLoggerFactory
 import spock.lang.Specification
+import org.gradle.api.internal.*
 
 class DefaultDependencyManagementServicesTest extends Specification {
     final ServiceRegistry parent = Mock()
     final FileResolver fileResolver = Mock()
     final DependencyMetaDataProvider dependencyMetaDataProvider = Mock()
     final ProjectFinder projectFinder = Mock()
-    final ClassGenerator classGenerator = Mock()
+    final Instantiator instantiator = Mock()
     final DomainObjectContext domainObjectContext = Mock()
     final TestRepositoryHandler repositoryHandler = Mock()
-    final ConfigurationContainer configurationContainer = Mock()
+    final ConfigurationContainerInternal configurationContainer = Mock()
     final StartParameter startParameter = Mock()
+    final ListenerManager listenerManager = Mock()
     final DefaultDependencyManagementServices services = new DefaultDependencyManagementServices(parent)
 
-    def "provides a ResolverFactory"() {
-        given:
-        _ * parent.getFactory(LoggingManagerInternal.class)
-
-        expect:
-        services.get(ResolverFactory.class) != null
+    def setup() {
+        Factory<LoggingManagerInternal> loggingFactory = Mock()
+        _ * parent.getFactory(LoggingManagerInternal) >> loggingFactory
+        ProgressLoggerFactory progressLoggerFactory = Mock()
+        _ * parent.get(ProgressLoggerFactory) >> progressLoggerFactory
+        CacheRepository cacheRepository = Mock()
+        _ * parent.get(CacheRepository) >> cacheRepository
+        ClassPathRegistry classPathRegistry = Mock()
+        _ * parent.get(ClassPathRegistry) >> classPathRegistry
+        _ * parent.get(ListenerManager) >> listenerManager
     }
 
     def "provides a MavenFactory"() {
@@ -58,10 +63,10 @@ class DefaultDependencyManagementServicesTest extends Specification {
 
     def "can create dependency resolution services"() {
         given:
-        _ * parent.get(ClassGenerator.class) >> classGenerator
+        _ * parent.get(Instantiator.class) >> instantiator
         _ * parent.get(StartParameter.class) >> startParameter
-        1 * classGenerator.newInstance(DefaultRepositoryHandler.class, _, _, _) >> repositoryHandler
-        1 * classGenerator.newInstance(DefaultConfigurationContainer.class, !null, classGenerator, domainObjectContext) >> configurationContainer
+        1 * instantiator.newInstance(DefaultRepositoryHandler.class, _, _, _) >> repositoryHandler
+        1 * instantiator.newInstance(DefaultConfigurationContainer.class, !null, instantiator, domainObjectContext, listenerManager) >> configurationContainer
 
         when:
         def resolutionServices = services.create(fileResolver, dependencyMetaDataProvider, projectFinder, domainObjectContext)
@@ -78,9 +83,9 @@ class DefaultDependencyManagementServicesTest extends Specification {
 
         given:
         _ * parent.get(StartParameter.class) >> startParameter
-        _ * parent.get(ClassGenerator.class) >> classGenerator
-        2 * classGenerator.newInstance(DefaultRepositoryHandler.class, _, _, _) >>> [repositoryHandler, publishRepositoryHandler]
-        1 * classGenerator.newInstance(DefaultConfigurationContainer.class, !null, classGenerator, domainObjectContext) >> configurationContainer
+        _ * parent.get(Instantiator.class) >> instantiator
+        2 * instantiator.newInstance(DefaultRepositoryHandler.class, _, _, _) >>> [repositoryHandler, publishRepositoryHandler]
+        1 * instantiator.newInstance(DefaultConfigurationContainer.class, !null, instantiator, domainObjectContext, listenerManager) >> configurationContainer
 
         when:
         def resolutionServices = services.create(fileResolver, dependencyMetaDataProvider, projectFinder, domainObjectContext)
@@ -97,9 +102,9 @@ class DefaultDependencyManagementServicesTest extends Specification {
 
         given:
         _ * parent.get(StartParameter.class) >> startParameter
-        _ * parent.get(ClassGenerator.class) >> classGenerator
-        2 * classGenerator.newInstance(DefaultRepositoryHandler.class, _, _, _) >>> [repositoryHandler, publishRepositoryHandler]
-        1 * classGenerator.newInstance(DefaultConfigurationContainer.class, !null, classGenerator, domainObjectContext) >> configurationContainer
+        _ * parent.get(Instantiator.class) >> instantiator
+        2 * instantiator.newInstance(DefaultRepositoryHandler.class, _, _, _) >>> [repositoryHandler, publishRepositoryHandler]
+        1 * instantiator.newInstance(DefaultConfigurationContainer.class, !null, instantiator, domainObjectContext, listenerManager) >> configurationContainer
 
         when:
         def resolutionServices = services.create(fileResolver, dependencyMetaDataProvider, projectFinder, domainObjectContext)
@@ -111,7 +116,7 @@ class DefaultDependencyManagementServicesTest extends Specification {
 }
 
 abstract class TestRepositoryHandler extends DefaultRepositoryHandler implements IConventionAware {
-    TestRepositoryHandler(ResolverFactory resolverFactory, FileResolver fileResolver, ClassGenerator classGenerator) {
-        super(resolverFactory, fileResolver, classGenerator)
+    TestRepositoryHandler(ResolverFactory resolverFactory, FileResolver fileResolver, Instantiator instantiator) {
+        super(resolverFactory, fileResolver, instantiator)
     }
 }

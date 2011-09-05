@@ -19,11 +19,11 @@ package org.gradle.initialization;
 import org.gradle.*;
 import org.gradle.api.internal.ExceptionAnalyser;
 import org.gradle.api.internal.project.GlobalServicesRegistry;
-import org.gradle.api.internal.project.IProjectFactory;
 import org.gradle.api.internal.project.ServiceRegistry;
 import org.gradle.api.internal.project.TopLevelBuildServiceRegistry;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.logging.StandardOutputListener;
+import org.gradle.cli.CommandLineConverter;
 import org.gradle.cache.CacheRepository;
 import org.gradle.configuration.BuildConfigurer;
 import org.gradle.invocation.DefaultGradle;
@@ -59,6 +59,7 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
         // Register default loggers 
         ListenerManager listenerManager = sharedServices.get(ListenerManager.class);
         listenerManager.addListener(new BuildProgressLogger(sharedServices.get(ProgressLoggerFactory.class)));
+        listenerManager.useLogger(new DependencyResolutionLogger(sharedServices.get(ProgressLoggerFactory.class)));
 
         GradleLauncher.injectCustomFactory(this);
     }
@@ -134,10 +135,7 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
                                 this,
                                 serviceRegistry.get(ClassLoaderRegistry.class),
                                 serviceRegistry.get(CacheRepository.class))),
-                new DefaultGradlePropertiesLoader(),
-                new BuildLoader(
-                        serviceRegistry.get(IProjectFactory.class)
-                ),
+                serviceRegistry.get(BuildLoader.class),
                 serviceRegistry.get(BuildConfigurer.class),
                 gradle.getBuildListenerBroadcaster(),
                 serviceRegistry.get(ExceptionAnalyser.class),

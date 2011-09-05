@@ -20,14 +20,12 @@ import org.gradle.StartParameter;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Module;
 import org.gradle.api.artifacts.maven.MavenFactory;
-import org.gradle.api.execution.TaskActionListener;
 import org.gradle.api.internal.*;
 import org.gradle.api.internal.artifacts.DefaultModule;
 import org.gradle.api.internal.artifacts.DependencyManagementServices;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.artifacts.dsl.DefaultPublishArtifactFactory;
 import org.gradle.api.internal.artifacts.dsl.PublishArtifactFactory;
-import org.gradle.api.internal.changedetection.*;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.IdentityFileResolver;
 import org.gradle.api.internal.initialization.DefaultScriptHandlerFactory;
@@ -36,14 +34,15 @@ import org.gradle.api.internal.project.taskfactory.AnnotationProcessingTaskFacto
 import org.gradle.api.internal.project.taskfactory.DependencyAutoWireTaskFactory;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
 import org.gradle.api.internal.project.taskfactory.TaskFactory;
-import org.gradle.api.internal.tasks.TaskExecuter;
-import org.gradle.api.internal.tasks.execution.*;
-import org.gradle.cache.AutoCloseCacheFactory;
-import org.gradle.cache.CacheFactory;
 import org.gradle.cache.CacheRepository;
-import org.gradle.cache.DefaultCacheRepository;
+import org.gradle.cache.internal.CacheFactory;
+import org.gradle.cache.internal.DefaultCacheRepository;
+import org.gradle.cache.internal.LazyOpenCacheFactory;
 import org.gradle.configuration.*;
-import org.gradle.groovy.scripts.*;
+import org.gradle.groovy.scripts.DefaultScriptCompilerFactory;
+import org.gradle.groovy.scripts.ScriptCompilerFactory;
+import org.gradle.groovy.scripts.ScriptExecutionListener;
+import org.gradle.groovy.scripts.internal.*;
 import org.gradle.initialization.*;
 import org.gradle.listener.ListenerManager;
 import org.gradle.logging.LoggingManagerInternal;
@@ -77,9 +76,6 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     protected ImportsReader createImportsReader() {
         return new ImportsReader();
     }
-    protected ClassGenerator createClassGenerator() {
-        return new AsmBackedClassGenerator();
-    }
 
     protected TimeProvider createTimeProvider() {
         return new TrueTimeProvider();
@@ -92,15 +88,11 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     protected IProjectFactory createProjectFactory() {
         return new ProjectFactory(
                 startParameter.getBuildScriptSource(),
-                get(ClassGenerator.class));
+                get(Instantiator.class));
     }
 
     protected ListenerManager createListenerManager(ListenerManager listenerManager) {
         return listenerManager.createChild();
-    }
-
-    protected CacheFactory createCacheFactory(CacheFactory parentFactory) {
-        return new AutoCloseCacheFactory(parentFactory);
     }
 
     protected ClassPathRegistry createClassPathRegistry() {
@@ -117,22 +109,24 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
         return new DefaultActorFactory(get(ExecutorFactory.class));
     }
 
-    protected TaskExecuter createTaskExecuter() {
-        return new ExecuteAtMostOnceTaskExecuter(
-                new SkipOnlyIfTaskExecuter(
-                        new SkipTaskWithNoActionsExecuter(
-                                new SkipEmptySourceFilesTaskExecuter(
-                                        new ValidatingTaskExecuter(
-                                                new SkipUpToDateTaskExecuter(
-                                                        new PostExecutionAnalysisTaskExecuter(
-                                                                new ExecuteActionsTaskExecuter(
-                                                                        get(ListenerManager.class).getBroadcaster(TaskActionListener.class))),
-                                                        get(TaskArtifactStateRepository.class)))))));
+    protected IGradlePropertiesLoader createGradlePropertiesLoader() {
+        return new DefaultGradlePropertiesLoader(startParameter);
+    }
+
+    protected BuildLoader createBuildLoader() {
+        return new ProjectPropertySettingBuildLoader(
+                get(IGradlePropertiesLoader.class),
+                new InstantiatingBuildLoader(get(IProjectFactory.class)));
+    }
+
+    protected CacheFactory createCacheFactory() {
+        return getFactory(CacheFactory.class).create();
     }
 
     protected CacheRepository createCacheRepository() {
+        CacheFactory factory = new LazyOpenCacheFactory(get(CacheFactory.class));
         return new DefaultCacheRepository(startParameter.getGradleUserHomeDir(), startParameter.getProjectCacheDir(),
-                startParameter.getCacheUsage(), get(CacheFactory.class));
+                startParameter.getCacheUsage(), factory);
     }
 
     protected ProjectEvaluator createProjectEvaluator() {
@@ -148,31 +142,18 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
                                 get(ClassGenerator.class))));
     }
 
-    protected TaskArtifactStateRepository createTaskArtifactStateRepository() {
-        CacheRepository cacheRepository = get(CacheRepository.class);
-        FileSnapshotter fileSnapshotter = new DefaultFileSnapshotter(
-                new CachingHasher(
-                        new DefaultHasher(),
-                        cacheRepository));
-
-        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(fileSnapshotter, new RandomLongIdGenerator(), cacheRepository);
-        return new FileCacheBroadcastTaskArtifactStateRepository(
-                new ShortCircuitTaskArtifactStateRepository(
-                        startParameter,
-                        new DefaultTaskArtifactStateRepository(cacheRepository,
-                                fileSnapshotter,
-                                outputFilesSnapshotter)),
-                new DefaultFileCacheListener());
-    }
-
     protected ScriptCompilerFactory createScriptCompileFactory() {
         ScriptExecutionListener scriptExecutionListener = get(ListenerManager.class).getBroadcaster(ScriptExecutionListener.class);
+        EmptyScriptGenerator emptyScriptGenerator = new AsmBackedEmptyScriptGenerator();
         return new DefaultScriptCompilerFactory(
-                new CachingScriptCompilationHandler(
-                        new DefaultScriptCompilationHandler()),
-                new DefaultScriptRunnerFactory(
-                        scriptExecutionListener),
-                get(CacheRepository.class));
+                new CachingScriptClassCompiler(
+                        new ShortCircuitEmptyScriptCompiler(
+                                new FileCacheBackedScriptClassCompiler(
+                                        get(CacheRepository.class),
+                                        new DefaultScriptCompilationHandler(
+                                                emptyScriptGenerator)),
+                                emptyScriptGenerator)),
+                new DefaultScriptRunnerFactory(scriptExecutionListener));
     }
 
     protected ScriptPluginFactory createScriptObjectConfigurerFactory() {
@@ -198,11 +179,13 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     }
 
     protected SettingsProcessor createSettingsProcessor() {
-        return new PropertiesLoadingSettingsProcessor(new
-                ScriptEvaluatingSettingsProcessor(
+        return new PropertiesLoadingSettingsProcessor(
+                new ScriptEvaluatingSettingsProcessor(
                     get(ScriptPluginFactory.class),
                     new SettingsFactory(
-                        new DefaultProjectDescriptorRegistry())));
+                        new DefaultProjectDescriptorRegistry()),
+                        get(IGradlePropertiesLoader.class)),
+                get(IGradlePropertiesLoader.class));
     }
 
     protected ExceptionAnalyser createExceptionAnalyser() {
@@ -239,8 +222,8 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
 
     protected DependencyManagementServices createDependencyManagementServices() {
         ClassLoader coreImplClassLoader = get(ClassLoaderRegistry.class).getCoreImplClassLoader();
-        ServiceLocator serviceLocator = new ServiceLocator();
-        return serviceLocator.getServiceImplementation(DependencyManagementServices.class, coreImplClassLoader, this);
+        ServiceLocator serviceLocator = new ServiceLocator(coreImplClassLoader);
+        return serviceLocator.getFactory(DependencyManagementServices.class).newInstance(this);
     }
 
     public ServiceRegistryFactory createFor(Object domainObject) {

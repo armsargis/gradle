@@ -19,19 +19,19 @@ package org.gradle.plugins.ide.idea.model
 import org.gradle.api.JavaVersion
 
 /**
- * Java language level used by IDEA projects
+ * Java language level used by IDEA projects.
  *
  * @author: Szczepan Faber, created at: 7/14/11
  */
 class IdeaLanguageLevel {
 
-    String formatted
+    String level
 
     IdeaLanguageLevel(Object version) {
         if (version instanceof String && version =~ /^JDK_/) {
-            formatted = version
+            level = version
             return
         }
-        formatted = JavaVersion.toVersion(version).name().replaceFirst("VERSION", "JDK")
+        level = JavaVersion.toVersion(version).name().replaceFirst("VERSION", "JDK")
     }
 }

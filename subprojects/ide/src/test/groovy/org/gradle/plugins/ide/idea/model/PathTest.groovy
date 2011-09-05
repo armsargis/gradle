@@ -19,9 +19,14 @@ import org.gradle.util.Matchers
 import spock.lang.Specification
 
 class PathTest extends Specification {
-    def pathsAreEqualWhenTheyHaveTheSameCanonicalUrl() {
+    def "paths are equal when they have the same canonical url"() {
         expect:
         Matchers.strictlyEquals(new Path('file://$ROOT_DIR$/file'), new Path('file://$ROOT_DIR$/file'))
         new Path('file://$ROOT_DIR$/file') != new Path('file://$ROOT_DIR$/other')
+    }
+
+    def "equals honors subclasses"() {
+        expect:
+        new Path('file://$ROOT_DIR$/file') == new FilePath(null, null, 'file://$ROOT_DIR$/file', null)
     }
 }

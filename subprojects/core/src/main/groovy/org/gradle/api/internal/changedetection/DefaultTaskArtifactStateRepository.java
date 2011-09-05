@@ -16,14 +16,12 @@
 
 package org.gradle.api.internal.changedetection;
 
-import org.apache.commons.lang.StringUtils;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.TaskExecutionHistory;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.cache.CacheRepository;
 
 import java.util.ArrayList;
 import java.util.Formatter;
@@ -37,8 +35,8 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
     private final TaskHistoryRepository taskHistoryRepository;
     private final UpToDateRule upToDateRule;
 
-    public DefaultTaskArtifactStateRepository(CacheRepository repository, FileSnapshotter inputFilesSnapshotter, FileSnapshotter outputFilesSnapshotter) {
-        this.taskHistoryRepository = new CacheBackedTaskHistoryRepository(repository, new CacheBackedFileSnapshotRepository(repository));
+    public DefaultTaskArtifactStateRepository(TaskHistoryRepository taskHistoryRepository, FileSnapshotter inputFilesSnapshotter, FileSnapshotter outputFilesSnapshotter) {
+        this.taskHistoryRepository = taskHistoryRepository;
         upToDateRule = new CompositeUpToDateRule(
                 new TaskTypeChangedUpToDateRule(),
                 new InputPropertiesChangedUpToDateRule(),
@@ -56,30 +54,6 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
         boolean snapshot();
 
         FileCollection getPreviousOutputFiles();
-    }
-
-    private static class NoDeclaredArtifactsExecution implements TaskExecutionState {
-        private final TaskInternal task;
-
-        private NoDeclaredArtifactsExecution(TaskInternal task) {
-            this.task = task;
-        }
-
-        public List<String> isUpToDate() {
-            List<String> messages = new ArrayList<String>();
-            if (!task.getOutputs().getHasOutput()) {
-                messages.add(String.format("%s has not declared any outputs.", StringUtils.capitalize(task.toString())));
-            }
-            return messages;
-        }
-
-        public boolean snapshot() {
-            return false;
-        }
-
-        public FileCollection getPreviousOutputFiles() {
-            return new SimpleFileCollection();
-        }
     }
 
     private static class HistoricExecution implements TaskExecutionState {
@@ -180,9 +154,6 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
         }
 
         public TaskExecutionState getExecution() {
-            if (!task.getOutputs().getHasOutput()) {
-                return new NoDeclaredArtifactsExecution(task);
-            }
             return new HistoricExecution(task, history, upToDateRule);
         }
 

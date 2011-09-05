@@ -19,8 +19,11 @@ import java.io.File;
 
 /**
  * Represents a project of some kind.
+ *
+ * @deprecated Use {@link Element} or one of its subtypes instead.
  */
-public interface Project {
+@Deprecated
+public interface Project extends Element {
     /**
      * Returns the fully-qualified path of this project. This is a unique identifier for the project.
      *

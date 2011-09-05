@@ -16,39 +16,103 @@
 package org.gradle.api.plugins.sonar.internal
 
 import org.apache.commons.configuration.MapConfiguration
-import org.sonar.api.CoreProperties
+import org.sonar.api.batch.bootstrap.ProjectDefinition
+import org.sonar.api.batch.bootstrap.ProjectReactor
 import org.sonar.batch.Batch
 import org.sonar.batch.bootstrapper.EnvironmentInformation
-import org.sonar.batch.bootstrapper.ProjectDefinition
-import org.sonar.batch.bootstrapper.Reactor
+import org.gradle.api.plugins.sonar.model.SonarProject
+
+import org.gradle.api.plugins.sonar.model.ModelToPropertiesConverter
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import org.gradle.api.plugins.sonar.model.SonarRootModel
+import org.gradle.api.plugins.sonar.model.SonarModel
 
 /**
- * Runs Sonar code analysis using the configuration of the Sonar task.
+ * Runs Sonar code analysis for a project hierarchy.
  */
 class SonarCodeAnalyzer {
-    String gradleVersion
-    def sonarTask
+    private static final Logger LOGGER = LoggerFactory.getLogger(SonarCodeAnalyzer)
+
+    SonarRootModel rootModel
 
     void execute() {
-        def globalProperties = [:]
-        globalProperties.putAll(sonarTask.globalProperties)
-        globalProperties["sonar.host.url"] = sonarTask.serverUrl
+        def projectDef = configureProject(rootModel)
+        def reactor = new ProjectReactor(projectDef)
+        def globalProperties = extractProperties(rootModel)
+        configureAdditionalGlobalProperties(globalProperties)
+        for (prop in globalProperties) {
+            LOGGER.info("adding global property $prop")
+        }
+        def environment = new EnvironmentInformation("Gradle", rootModel.gradleVersion)
+        def batch = Batch.create(reactor, new MapConfiguration(globalProperties), environment)
+        batch.execute()
+    }
+
+    ProjectDefinition configureProject(SonarModel sonarModel) {
+        def sonarProject = sonarModel.project
+
+        LOGGER.info("configuring project $sonarProject.name")
 
         def projectProperties = new Properties()
-        projectProperties.putAll(sonarTask.projectProperties)
-        projectProperties[CoreProperties.PROJECT_KEY_PROPERTY] = sonarTask.projectKey
-        projectProperties[CoreProperties.PROJECT_NAME_PROPERTY] = sonarTask.projectName
-        projectProperties[CoreProperties.PROJECT_VERSION_PROPERTY] = sonarTask.projectVersion
+        projectProperties.putAll(extractProperties(sonarProject))
+        for (prop in projectProperties) {
+            LOGGER.info("adding project property $prop")
+        }
 
-        def project = new ProjectDefinition(sonarTask.projectDir, sonarTask.bootstrapDir, projectProperties)
-        sonarTask.projectMainSourceDirs.each { project.addSourceDir(it.path) }
-        sonarTask.projectTestSourceDirs.each { project.addTestDir(it.path) }
-        sonarTask.projectClassesDirs.each { project.addBinaryDir(it.path) }
-        sonarTask.projectDependencies.each { project.addLibrary(it.path) }
+        def projectDef = ProjectDefinition.create(projectProperties)
+        projectDef.key = sonarProject.key
+        projectDef.name = sonarProject.name
+        projectDef.description = sonarProject.description
+        projectDef.version = sonarProject.version
+        projectDef.baseDir = sonarProject.baseDir
+        projectDef.workDir = sonarProject.workDir
 
-        def reactor = new Reactor(project)
-        def environment = new EnvironmentInformation("Gradle", gradleVersion)
-        def batch = new Batch(new MapConfiguration(globalProperties), project, reactor, environment)
-        batch.execute()
+        for (dir in sonarProject.sourceDirs) {
+            LOGGER.info("adding source dir $dir")
+        }
+        projectDef.sourceDirs = sonarProject.sourceDirs as File[]
+
+        for (dir in sonarProject.testDirs) {
+            LOGGER.info("adding test dir $dir")
+        }
+        projectDef.testDirs = sonarProject.testDirs as File[]
+
+        for (dir in sonarProject.binaryDirs) {
+            LOGGER.info("adding binary dir $dir")
+            projectDef.addBinaryDir(dir)
+        }
+
+        for (lib in sonarProject.libraries) {
+            LOGGER.info("adding library $lib")
+            projectDef.addLibrary(lib.absolutePath)
+        }
+
+        for (childModel in sonarModel.childModels) {
+            def childProjectDef = configureProject(childModel)
+            projectDef.addSubProject(childProjectDef)
+        }
+
+        projectDef
+    }
+
+    private Map<String, String> extractProperties(model) {
+        def converter = new ModelToPropertiesConverter(model)
+        converter.propertyProcessors = model.propertyProcessors
+        converter.convert()
+    }
+
+    private void configureAdditionalGlobalProperties(Map<String, String> globalProperties) {
+        globalProperties.skippedModules = getSkippedProjects(rootModel)*.key.join(",")
+    }
+
+    private List<SonarProject> getSkippedProjects(SonarModel sonarModel, List<SonarProject> skipped = []) {
+        if (sonarModel.project.skip) {
+            skipped << sonarModel.project
+        }
+        for (childModel in sonarModel.childModels) {
+            getSkippedProjects(childModel, skipped)
+        }
+        skipped
     }
 }

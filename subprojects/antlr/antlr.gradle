@@ -13,8 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-apply plugin: 'groovy'
-
 dependencies {
     groovy libraries.groovy_depends
 
@@ -25,7 +23,6 @@ dependencies {
             libraries.ant,
             libraries.ant_antlr,
             libraries.antlr
-
-    testCompile project(path: ':core', configuration: 'testFixtures')
-    testRuntime project(path: ':core', configuration: 'testFixturesRuntime')
 }
+
+useTestFixtures()

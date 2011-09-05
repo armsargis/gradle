@@ -17,7 +17,7 @@ package org.gradle.launcher
 
 import org.gradle.api.internal.Factory
 import org.gradle.api.internal.project.ServiceRegistry
-import org.gradle.initialization.CommandLineConverter
+import org.gradle.cli.CommandLineConverter
 import org.gradle.launcher.CommandLineActionFactory.ActionAdapter
 import org.gradle.launcher.CommandLineActionFactory.ShowGuiAction
 import org.gradle.launcher.CommandLineActionFactory.WithLoggingAction
@@ -29,7 +29,11 @@ import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 import spock.lang.Specification
 import org.gradle.*
+import org.gradle.cli.CommandLineArgumentException
 import org.gradle.initialization.GradleLauncherFactory
+import org.gradle.logging.ProgressLogger
+import org.gradle.logging.ProgressLoggerFactory
+import org.gradle.launcher.daemon.Daemon
 
 class CommandLineActionFactoryTest extends Specification {
     @Rule
@@ -57,6 +61,8 @@ class CommandLineActionFactoryTest extends Specification {
     }
 
     def setup() {
+        ProgressLoggerFactory progressLoggerFactory = Mock()
+        _ * loggingServices.get(ProgressLoggerFactory) >> progressLoggerFactory
         _ * loggingServices.get(CommandLineConverter) >> loggingConfigurationConverter
         _ * loggingConfigurationConverter.convert(!null) >> new LoggingConfiguration()
         Factory<LoggingManagerInternal> loggingManagerFactory = Mock()
@@ -222,6 +228,6 @@ class CommandLineActionFactoryTest extends Specification {
         action instanceof WithLoggingAction
         action.action instanceof ExceptionReportingAction
         action.action.action instanceof ActionAdapter
-        action.action.action.action instanceof DaemonMain
+        action.action.action.action instanceof Daemon
     }
 }

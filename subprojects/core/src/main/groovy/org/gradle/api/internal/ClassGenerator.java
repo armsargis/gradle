@@ -20,9 +20,4 @@ public interface ClassGenerator {
      * Generates a proxy class for the given class. May decorate the given class or may generate a subclass.
      */
     <T> Class<? extends T> generate(Class<T> type);
-
-    /**
-     * Creates an instance of the proxy class for the given class.
-     */
-    <T> T newInstance(Class<T> type, Object... parameters);
 }

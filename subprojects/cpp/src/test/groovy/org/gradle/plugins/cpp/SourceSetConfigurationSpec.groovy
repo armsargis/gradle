@@ -26,18 +26,18 @@ class SourceSetConfigurationSpec extends CppProjectSpec {
         cpp {
             sourceSets {
                 ss1 {
-                    cpp {
+                    source {
                         srcDirs "d1", "d2"
                     }
-                    headers {
+                    exportedHeaders {
                         srcDirs "h1", "h2"
                     }
                 }
                 ss2 {
-                    cpp {
+                    source {
                         srcDirs "d3"
                     }
-                    headers {
+                    exportedHeaders {
                         srcDirs "h3"
                     }
                 }
@@ -49,11 +49,11 @@ class SourceSetConfigurationSpec extends CppProjectSpec {
         def ss2 = cpp.sourceSets.ss2
 
         // cpp dir automatically added by convention
-        ss1.cpp.srcDirs*.name == ["cpp", "d1", "d2"]
-        ss2.cpp.srcDirs*.name == ["cpp", "d3"]
+        ss1.source.srcDirs*.name == ["cpp", "d1", "d2"]
+        ss2.source.srcDirs*.name == ["cpp", "d3"]
 
         // headers dir automatically added by convention
-        ss1.headers.srcDirs*.name == ["headers", "h1", "h2"]
-        ss2.headers.srcDirs*.name == ["headers", "h3"]
+        ss1.exportedHeaders.srcDirs*.name == ["headers", "h1", "h2"]
+        ss2.exportedHeaders.srcDirs*.name == ["headers", "h3"]
     }
 }

@@ -15,33 +15,81 @@
  */
 package org.gradle.build.docs.dsl.docbook
 
-class ClassExtensionDoc {
-    private final List<ClassDoc> extensionClass
-    private final String pluginId
+import javax.xml.parsers.DocumentBuilderFactory
+import org.gradle.build.docs.dsl.model.ClassMetaData
+import org.gradle.build.docs.dsl.model.MethodMetaData
+import org.gradle.build.docs.dsl.model.PropertyMetaData
+import org.gradle.build.docs.dsl.model.TypeMetaData
+import org.w3c.dom.Document
+import org.gradle.build.docs.DomBuilder
 
-    ClassExtensionDoc(String pluginId, List<ClassDoc> extensionClass) {
+/**
+ * Represents the documentation model for extensions contributed by a given plugin.
+ */
+class ClassExtensionDoc {
+    private final Set<ClassDoc> mixinClasses = []
+    private final Map<String, ClassDoc> extensionClasses = [:]
+    private final String pluginId
+    private final ClassMetaData targetClass
+    private final List<PropertyDoc> extraProperties = []
+    private final List<BlockDoc> extraBlocks = []
+
+    ClassExtensionDoc(String pluginId, ClassMetaData targetClass) {
         this.pluginId = pluginId
-        this.extensionClass = extensionClass
+        this.targetClass = targetClass
     }
 
     String getPluginId() {
         return pluginId
     }
 
-    List<ClassDoc> getExtensionClasses() {
-        extensionClass
+    Set<ClassDoc> getMixinClasses() {
+        mixinClasses
+    }
+
+    void buildMetaData(DslDocModel model) {
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+        def linkRenderer = new LinkRenderer(doc, model)
+        extensionClasses.each { id, type ->
+            def propertyMetaData = new PropertyMetaData(id, targetClass)
+            propertyMetaData.type = new TypeMetaData(type.name)
+
+            def builder = new DomBuilder(doc, null)
+            builder.para {
+                text("The ")
+                appendChild(linkRenderer.link(propertyMetaData.type, new DefaultGenerationListener()))
+                text(" added by the ${pluginId} plugin.")
+            }
+            def propertyDoc = new PropertyDoc(propertyMetaData, builder.elements, [])
+            extraProperties.add(propertyDoc)
+
+            builder = new DomBuilder(doc, null)
+            builder.para {
+                text("Configures the ")
+                appendChild(linkRenderer.link(propertyMetaData.type, new DefaultGenerationListener()))
+                text(" added by the ${pluginId} plugin.")
+            }
+            def methodMetaData = new MethodMetaData(id, targetClass)
+            methodMetaData.addParameter("configClosure", new TypeMetaData(Closure.name))
+            def methodDoc = new MethodDoc(methodMetaData, builder.elements)
+            extraBlocks.add(new BlockDoc(methodDoc, propertyDoc, propertyMetaData.type, false))
+        }
     }
 
     List<PropertyDoc> getExtensionProperties() {
-        return extensionClass.inject([]) {list, eClass -> eClass.classProperties.inject(list) {x, prop -> x << prop } }.sort { it.name }
+        def properties = mixinClasses.inject([]) {list, eClass -> eClass.classProperties.inject(list) {x, prop -> x << prop } }
+        properties.addAll(extraProperties)
+        return properties.sort { it.name }
     }
 
     List<MethodDoc> getExtensionMethods() {
-        return extensionClass.inject([]) {list, eClass -> eClass.classMethods.inject(list) {x, method -> x << method } }.sort { it.name }
+        return mixinClasses.inject([]) {list, eClass -> eClass.classMethods.inject(list) {x, method -> x << method } }.sort { it.name }
     }
 
     List<BlockDoc> getExtensionBlocks() {
-        return extensionClass.inject([]) {list, eClass -> eClass.classBlocks.inject(list) {x, block -> x << block } }.sort { it.name }
+        def blocks = mixinClasses.inject([]) {list, eClass -> eClass.classBlocks.inject(list) {x, block -> x << block } }
+        blocks.addAll(extraBlocks)
+        return blocks.sort { it.name }
     }
 }
 

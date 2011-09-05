@@ -19,7 +19,7 @@ import groovy.lang.Closure;
 import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.apache.ivy.plugins.resolver.FileSystemResolver;
 import org.gradle.api.Action;
-import org.gradle.api.artifacts.ResolverContainer;
+import org.gradle.api.artifacts.ArtifactRepositoryContainer;
 import org.gradle.api.artifacts.maven.GroovyMavenDeployer;
 import org.gradle.api.artifacts.maven.MavenResolver;
 import org.gradle.api.internal.artifacts.configurations.ResolverProvider;
@@ -31,7 +31,7 @@ import java.util.Map;
  *
  * @author Hans Dockter
  */
-public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
+public interface RepositoryHandler extends ArtifactRepositoryContainer, ResolverProvider {
     final String DEFAULT_MAVEN_DEPLOYER_NAME = "mavenDeployer";
     final String DEFAULT_MAVEN_INSTALLER_NAME = "mavenInstaller";
 
@@ -51,7 +51,7 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
      * The default is a Hash value of the rootdir paths. The name is used in the console output,
      * to point to information related to a particular repository. A name must be unique amongst a repository group.</td></tr>
      * <tr><td><code>dirs</code></td>
-     *     <td>Specifies a list of rootDirs where to look for dependencies.</td></tr>
+     *     <td>Specifies a list of rootDirs where to look for dependencies. These are evaluated as for {@link org.gradle.api.Project#files(Object...)}</td></tr>
      * </table>
      *
      * <p>Examples:
@@ -71,8 +71,24 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
     FileSystemResolver flatDir(Map<String, ?> args);
 
     /**
+     * Adds an configures a repository which will look for dependencies in a number of local directories.
+     *
+     * @param configureClosure The closure to execute to configure the repository.
+     * @return The repository.
+     */
+    FlatDirectoryArtifactRepository flatDir(Closure configureClosure);
+
+    /**
+     * Adds an configures a repository which will look for dependencies in a number of local directories.
+     *
+     * @param action The action to execute to configure the repository.
+     * @return The repository.
+     */
+    FlatDirectoryArtifactRepository flatDir(Action<? super FlatDirectoryArtifactRepository> action);
+
+    /**
      * Adds a repository which looks in the Maven central repository for dependencies. The URL used to access this repository is
-     * always {@link org.gradle.api.artifacts.ResolverContainer#MAVEN_CENTRAL_URL}. The behavior of this resolver
+     * always {@link org.gradle.api.artifacts.ArtifactRepositoryContainer#MAVEN_CENTRAL_URL}. The behavior of this resolver
      * is otherwise the same as the ones added by {@link #mavenRepo(java.util.Map)}.
      *
      * The following parameter are accepted as keys for the map:
@@ -82,13 +98,14 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
      *     <th>Description of Associated Value</th></tr>
      * <tr><td><code>name</code></td>
      *     <td><em>(optional)</em> The name of the repository. The default is
-     * {@value org.gradle.api.artifacts.ResolverContainer#DEFAULT_MAVEN_CENTRAL_REPO_NAME} is used as the name. A name
+     * {@value org.gradle.api.artifacts.ArtifactRepositoryContainer#DEFAULT_MAVEN_CENTRAL_REPO_NAME} is used as the name. A name
      * must be unique amongst a repository group.
      * </td></tr>
      * <tr><td><code>urls</code></td>
      *     <td>A single jar repository or a collection of jar repositories. Sometimes the artifact
      * lives in a different repository than the POM. In such a case you can specify further locations to look for an artifact.
-     * But be aware that the POM is only looked up in the root repository</td></tr>
+     * But be aware that the POM is only looked up in the root repository. The provided values are evaluated as for
+     * {@link org.gradle.api.Project#uri(Object)}.</td></tr>
      * </table>
      *
      * <p>Examples:
@@ -108,8 +125,8 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
 
     /**
      * Adds a repository which looks in the Maven central repository for dependencies. The URL used to access this repository is
-     * {@value org.gradle.api.artifacts.ResolverContainer#MAVEN_CENTRAL_URL}. The name of the repository is
-     * {@value org.gradle.api.artifacts.ResolverContainer#DEFAULT_MAVEN_CENTRAL_REPO_NAME}.
+     * {@value org.gradle.api.artifacts.ArtifactRepositoryContainer#MAVEN_CENTRAL_URL}. The name of the repository is
+     * {@value org.gradle.api.artifacts.ArtifactRepositoryContainer#DEFAULT_MAVEN_CENTRAL_REPO_NAME}.
      *
      * <p>Examples:
      * <pre>
@@ -127,7 +144,7 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
 
     /**
      * Adds a repository which looks in the local Maven cache for dependencies. The name of the repository is
-     * {@value org.gradle.api.artifacts.ResolverContainer#DEFAULT_MAVEN_LOCAL_REPO_NAME}.
+     * {@value org.gradle.api.artifacts.ArtifactRepositoryContainer#DEFAULT_MAVEN_LOCAL_REPO_NAME}.
      *
      * <p>Examples:
      * <pre>
@@ -165,7 +182,8 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
      * <tr><td><code>urls</code></td>
      *     <td>A single repository url or a list of urls. The first url is the the url of the root repo.
      * Gradle always looks first for the pom in the root repository. After this it looks for the artifact in the root repository.
-     * If the artifact can't be found there, it looks for it in the other repositories.</td></tr>
+     * If the artifact can't be found there, it looks for it in the other repositories. The provided values are evaluated as for
+     * {@link org.gradle.api.Project#uri(Object)}.</td></tr>
      * </table>
      *
      * <p>Examples:
@@ -256,6 +274,22 @@ public interface RepositoryHandler extends ResolverContainer, ResolverProvider {
      * @return The added repository
      */
     MavenResolver mavenInstaller(Map<String, ?> args, Closure configureClosure);
+
+    /**
+     * Adds and configures a Maven repository.
+     *
+     * @param closure The closure to use to configure the repository.
+     * @return The added repository.
+     */
+    MavenArtifactRepository maven(Closure closure);
+
+    /**
+     * Adds and configures a Maven repository.
+     *
+     * @param action The action to use to configure the repository.
+     * @return The added repository.
+     */
+    MavenArtifactRepository maven(Action<? super MavenArtifactRepository> action);
 
     /**
      * Adds and configures an Ivy repository.

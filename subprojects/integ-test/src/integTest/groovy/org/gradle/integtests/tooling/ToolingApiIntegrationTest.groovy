@@ -21,12 +21,13 @@ import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.Project
 import org.gradle.util.GradleVersion
+import org.gradle.util.TestFile
 
 class ToolingApiIntegrationTest extends ToolingApiSpecification {
     final BasicGradleDistribution otherVersion = dist.previousVersion('1.0-milestone-3')
+    TestFile projectDir = dist.testDir
 
     def "tooling api uses to the current version of gradle when none has been specified"() {
-        def projectDir = dist.testDir
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${GradleVersion.current().version}'"
 
         when:
@@ -37,15 +38,15 @@ class ToolingApiIntegrationTest extends ToolingApiSpecification {
     }
 
     def "tooling api uses the wrapper properties to determine which version to use"() {
-        def projectDir = dist.testDir
         projectDir.file('build.gradle').text = """
 task wrapper(type: Wrapper) { distributionUrl = '${otherVersion.binDistribution.toURI()}' }
-task check << { assert gradle.gradleVersion == '${GradleVersion.current().version}' }
+task check << { assert gradle.gradleVersion == '${otherVersion.version}' }
 """
         dist.executer().withTasks('wrapper').run()
 
         when:
         toolingApi.withConnector { connector ->
+            connector.useDefaultDistribution()
             maybeDisableDaemon(otherVersion, connector)
         }
         toolingApi.withConnection { connection -> connection.newBuild().forTasks('check').run() }
@@ -55,7 +56,6 @@ task check << { assert gradle.gradleVersion == '${GradleVersion.current().versio
     }
 
     def "can specify a gradle installation to use"() {
-        def projectDir = dist.testDir
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version}'"
 
         when:
@@ -70,7 +70,6 @@ task check << { assert gradle.gradleVersion == '${GradleVersion.current().versio
     }
 
     def "can specify a gradle distribution to use"() {
-        def projectDir = dist.testDir
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version}'"
 
         when:
@@ -85,7 +84,6 @@ task check << { assert gradle.gradleVersion == '${GradleVersion.current().versio
     }
 
     def "can specify a gradle version to use"() {
-        def projectDir = dist.testDir
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version}'"
 
         when:

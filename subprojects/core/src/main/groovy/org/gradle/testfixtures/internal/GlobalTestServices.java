@@ -16,12 +16,8 @@
 package org.gradle.testfixtures.internal;
 
 import org.gradle.api.Action;
-import org.gradle.api.internal.ClassPathRegistry;
-import org.gradle.api.internal.DefaultClassPathRegistry;
-import org.gradle.api.internal.Factory;
+import org.gradle.api.internal.*;
 import org.gradle.api.internal.project.DefaultServiceRegistry;
-import org.gradle.cache.AutoCloseCacheFactory;
-import org.gradle.cache.CacheFactory;
 import org.gradle.initialization.ClassLoaderRegistry;
 import org.gradle.initialization.DefaultClassLoaderRegistry;
 import org.gradle.listener.DefaultListenerManager;
@@ -54,10 +50,6 @@ public class GlobalTestServices extends DefaultServiceRegistry {
         return new DefaultClassLoaderRegistry(get(ClassPathRegistry.class), get(ClassLoaderFactory.class));
     }
 
-    protected CacheFactory createCacheFactory() {
-        return new AutoCloseCacheFactory(new InMemoryCacheFactory());
-    }
-
     protected ProgressLoggerFactory createProgressLoggerFactory() {
         return new DefaultProgressLoggerFactory(get(ListenerManager.class).getBroadcaster(ProgressListener.class), new TrueTimeProvider());
     }
@@ -86,4 +78,11 @@ public class GlobalTestServices extends DefaultServiceRegistry {
         };
     }
 
+    protected ClassGenerator createClassGenerator() {
+        return new AsmBackedClassGenerator();
+    }
+
+    protected Instantiator createInstantiator() {
+        return new ClassGeneratorBackedInstantiator(get(ClassGenerator.class), new DirectInstantiator());
+    }
 }

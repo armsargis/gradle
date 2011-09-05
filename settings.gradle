@@ -16,6 +16,7 @@
 include 'core'
 include 'coreImpl'
 include 'wrapper'
+include 'cli'
 include 'launcher'
 include 'plugins'
 include 'scala'
@@ -35,6 +36,8 @@ include 'sonar'
 include 'signing'
 include 'cpp'
 include 'ear'
+include 'internalTesting'
+include 'internalIntegTesting'
 
 rootProject.name = 'gradle'
 rootProject.children.each {project ->

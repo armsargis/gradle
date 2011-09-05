@@ -17,15 +17,11 @@
 package org.gradle.api.internal.project;
 
 import org.gradle.StartParameter;
-import org.gradle.api.internal.ClassPathRegistry;
-import org.gradle.api.internal.DefaultClassPathProvider;
-import org.gradle.api.internal.DefaultClassPathRegistry;
-import org.gradle.api.internal.GradleDistributionLocator;
-import org.gradle.cache.AutoCloseCacheFactory;
-import org.gradle.cache.CacheFactory;
-import org.gradle.cache.DefaultCacheFactory;
+import org.gradle.api.internal.*;
+import org.gradle.cache.internal.CacheFactory;
+import org.gradle.cache.internal.DefaultCacheFactory;
+import org.gradle.cli.CommandLineConverter;
 import org.gradle.initialization.ClassLoaderRegistry;
-import org.gradle.initialization.CommandLineConverter;
 import org.gradle.initialization.DefaultClassLoaderRegistry;
 import org.gradle.initialization.DefaultCommandLineConverter;
 import org.gradle.listener.DefaultListenerManager;
@@ -56,8 +52,8 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
         return new DefaultClassPathRegistry();
     }
 
-    protected CacheFactory createCacheFactory() {
-        return new AutoCloseCacheFactory(new DefaultCacheFactory());
+    protected Factory<CacheFactory> createCacheFactory() {
+        return new DefaultCacheFactory();
     }
 
     protected ClassLoaderRegistry createClassLoaderRegistry() {
@@ -82,5 +78,13 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
 
     protected MessagingServer createMessagingServer() {
         return get(MessagingServices.class).get(MessagingServer.class);
+    }
+
+    protected ClassGenerator createClassGenerator() {
+        return new AsmBackedClassGenerator();
+    }
+
+    protected Instantiator createInstantiator() {
+        return new ClassGeneratorBackedInstantiator(get(ClassGenerator.class), new DirectInstantiator());
     }
 }

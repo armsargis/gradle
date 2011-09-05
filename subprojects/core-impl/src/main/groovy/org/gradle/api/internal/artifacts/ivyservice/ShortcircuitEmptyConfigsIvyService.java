@@ -17,6 +17,7 @@ package org.gradle.api.internal.artifacts.ivyservice;
 
 import org.gradle.api.artifacts.*;
 import org.gradle.api.internal.artifacts.IvyService;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
 import org.gradle.api.specs.Spec;
 
 import java.io.File;
@@ -27,6 +28,22 @@ public class ShortcircuitEmptyConfigsIvyService implements IvyService {
     private final ResolvedConfiguration emptyConfig = new ResolvedConfiguration() {
         public boolean hasError() {
             return false;
+        }
+
+        public LenientConfiguration getLenientConfiguration() {
+            return new LenientConfiguration() {
+                public Set<ResolvedDependency> getFirstLevelModuleDependencies(Spec<Dependency> dependencySpec) {
+                    return Collections.emptySet();
+                }
+
+                public Set<UnresolvedDependency> getUnresolvedModuleDependencies() {
+                    return Collections.emptySet();
+                }
+
+                public Set<File> getFiles(Spec<Dependency> dependencySpec) {
+                    return Collections.emptySet();
+                }
+            };
         }
 
         public void rethrowFailure() throws ResolveException {
@@ -62,7 +79,7 @@ public class ShortcircuitEmptyConfigsIvyService implements IvyService {
         ivyService.publish(configuration, descriptorDestination);
     }
 
-    public ResolvedConfiguration resolve(Configuration configuration) {
+    public ResolvedConfiguration resolve(ConfigurationInternal configuration) {
         if (configuration.getAllDependencies().isEmpty()) {
             return emptyConfig;
         }

@@ -16,6 +16,8 @@
 package org.gradle.tooling.internal.consumer;
 
 import org.gradle.tooling.model.DomainObjectSet;
+import org.gradle.tooling.model.idea.IdeaModuleDependency;
+import org.gradle.tooling.model.idea.IdeaSingleEntryLibraryDependency;
 import org.gradle.tooling.model.internal.ImmutableDomainObjectSet;
 import org.gradle.util.UncheckedException;
 
@@ -23,8 +25,29 @@ import java.lang.reflect.*;
 import java.util.*;
 
 public class ProtocolToModelAdapter {
+
+    Map<String, Class> configuredTargetTypes = new HashMap<String, Class>();
+
+    public ProtocolToModelAdapter() {
+        configuredTargetTypes.put("org.gradle.tooling.internal.idea.DefaultIdeaSingleEntryLibraryDependency", IdeaSingleEntryLibraryDependency.class);
+        configuredTargetTypes.put("org.gradle.tooling.internal.idea.DefaultIdeaModuleDependency",  IdeaModuleDependency.class);
+    }
+
     public <T, S> T adapt(Class<T> targetType, S protocolObject) {
-        return targetType.cast(Proxy.newProxyInstance(targetType.getClassLoader(), new Class<?>[]{targetType}, new InvocationHandlerImpl(protocolObject)));
+        Class<T> target = guessTarget(targetType, protocolObject);
+        Object proxy = Proxy.newProxyInstance(target.getClassLoader(), new Class<?>[]{target}, new InvocationHandlerImpl(protocolObject));
+        return target.cast(proxy);
+    }
+
+    /**
+     * occasionally we want to use preconfigured target type instead of passed target type.
+     */
+    private <T, S> Class<T> guessTarget(Class<T> targetType, S protocolObject) {
+        Class configuredType = configuredTargetTypes.get(protocolObject.getClass().getCanonicalName());
+        if (configuredType != null){
+            return configuredType;
+        }
+        return targetType;
     }
 
     private class InvocationHandlerImpl implements InvocationHandler {
@@ -150,6 +173,9 @@ public class ProtocolToModelAdapter {
                 }
             }
             if (targetType instanceof Class) {
+                if (((Class) targetType).isPrimitive()) {
+                    return value;
+                }
                 return adapt((Class) targetType, value);
             }
             throw new UnsupportedOperationException(String.format("Cannot convert object of %s to %s.", value.getClass(), targetType));

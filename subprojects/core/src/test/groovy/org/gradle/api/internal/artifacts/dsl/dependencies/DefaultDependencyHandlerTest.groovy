@@ -40,6 +40,7 @@ class DefaultDependencyHandlerTest {
     private DependencyFactory dependencyFactoryStub = context.mock(DependencyFactory)
     private Configuration configurationMock = context.mock(Configuration)
     private ProjectFinder projectFinderDummy = context.mock(ProjectFinder)
+    private DependencySet dependenciesMock = context.mock(DependencySet)
 
     private DefaultDependencyHandler dependencyHandler = new DefaultDependencyHandler(
             configurationContainerStub, dependencyFactoryStub, projectFinderDummy)
@@ -48,6 +49,7 @@ class DefaultDependencyHandlerTest {
     void setUp() {
         context.checking {
             allowing(configurationContainerStub).findByName(TEST_CONF_NAME); will(returnValue(configurationMock))
+            allowing(configurationMock).getDependencies(); will(returnValue(dependenciesMock))
         }
     }
 
@@ -58,7 +60,7 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(configurationContainerStub).getAt(TEST_CONF_NAME); will(returnValue(configurationMock))
             allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(dependencyDummy))
-            one(configurationMock).addDependency(dependencyDummy);
+            one(dependenciesMock).add(dependencyDummy);
         }
 
         assertThat(dependencyHandler.add(TEST_CONF_NAME, someNotation), equalTo(dependencyDummy))
@@ -67,15 +69,39 @@ class DefaultDependencyHandlerTest {
     @Test
     void addWithClosure() {
         String someNotation = "someNotation"
-        def closure = { }
         DefaultExternalModuleDependency returnedDependency = HelperUtil.createDependency("group", "name", "1.0")
         context.checking {
             allowing(configurationContainerStub).getAt(TEST_CONF_NAME); will(returnValue(configurationMock))
             allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(returnedDependency))
-            one(configurationMock).addDependency(returnedDependency);
+            one(dependenciesMock).add(returnedDependency);
         }
         def dependency = dependencyHandler.add(TEST_CONF_NAME, someNotation) {
             force = true    
+        }
+        assertThat(dependency, equalTo(returnedDependency))
+        assertThat(dependency.force, equalTo(true))
+    }
+
+    @Test
+    void create() {
+        String someNotation = "someNotation"
+        Dependency dependencyDummy = context.mock(Dependency)
+        context.checking {
+            allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(dependencyDummy))
+        }
+
+        assertThat(dependencyHandler.create(someNotation), equalTo(dependencyDummy))
+    }
+
+    @Test
+    void createWithClosure() {
+        String someNotation = "someNotation"
+        DefaultExternalModuleDependency returnedDependency = HelperUtil.createDependency("group", "name", "1.0")
+        context.checking {
+            allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(returnedDependency))
+        }
+        def dependency = dependencyHandler.create(someNotation) {
+            force = true
         }
         assertThat(dependency, equalTo(returnedDependency))
         assertThat(dependency.force, equalTo(true))
@@ -87,7 +113,7 @@ class DefaultDependencyHandlerTest {
         Dependency dependencyDummy = context.mock(Dependency)
         context.checking {
             allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(dependencyDummy))
-            one(configurationMock).addDependency(dependencyDummy);
+            one(dependenciesMock).add(dependencyDummy);
         }
 
         assertThat(dependencyHandler."$TEST_CONF_NAME"(someNotation), equalTo(dependencyDummy))
@@ -99,7 +125,7 @@ class DefaultDependencyHandlerTest {
         DefaultExternalModuleDependency returnedDependency = HelperUtil.createDependency("group", "name", "1.0")
         context.checking {
             allowing(dependencyFactoryStub).createDependency(someNotation); will(returnValue(returnedDependency))
-            one(configurationMock).addDependency(returnedDependency);
+            one(dependenciesMock).add(returnedDependency);
         }
 
         def dependency = dependencyHandler."$TEST_CONF_NAME"(someNotation) {
@@ -118,8 +144,8 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createDependency(someNotation1); will(returnValue(dependencyDummy1))
             allowing(dependencyFactoryStub).createDependency(someNotation2); will(returnValue(dependencyDummy2))
-            one(configurationMock).addDependency(dependencyDummy1);
-            one(configurationMock).addDependency(dependencyDummy2);
+            one(dependenciesMock).add(dependencyDummy1);
+            one(dependenciesMock).add(dependencyDummy2);
         }
 
         dependencyHandler."$TEST_CONF_NAME"(someNotation1, someNotation2)
@@ -134,8 +160,8 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createDependency(someNotation1); will(returnValue(dependencyDummy1))
             allowing(dependencyFactoryStub).createDependency(someNotation2); will(returnValue(dependencyDummy2))
-            one(configurationMock).addDependency(dependencyDummy1);
-            one(configurationMock).addDependency(dependencyDummy2);
+            one(dependenciesMock).add(dependencyDummy1);
+            one(dependenciesMock).add(dependencyDummy2);
         }
 
         dependencyHandler."$TEST_CONF_NAME"([[someNotation1, someNotation2]])
@@ -151,7 +177,7 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createProjectDependencyFromMap(projectFinderDummy, someMapNotation); will(returnValue(projectDependency))
             allowing(dependencyFactoryStub).createDependency(projectDependency); will(returnValue(projectDependency))
-            one(configurationMock).addDependency(projectDependency);
+            one(dependenciesMock).add(projectDependency);
         }
 
         ConfigureUtil.configure(projectDependencyClosure, dependencyHandler)
@@ -170,7 +196,7 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createProjectDependencyFromMap(projectFinderDummy, someMapNotation); will(returnValue(projectDependency))
             allowing(dependencyFactoryStub).createDependency(projectDependency); will(returnValue(projectDependency))
-            one(configurationMock).addDependency(projectDependency);
+            one(dependenciesMock).add(projectDependency);
             one(projectDependency).copy();
         }
 
@@ -187,7 +213,7 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createModule(someNotation, null); will(returnValue(clientModule))
             allowing(dependencyFactoryStub).createDependency(clientModule); will(returnValue(clientModule))
-            one(configurationMock).addDependency(clientModule);
+            one(dependenciesMock).add(clientModule);
         }
 
         ConfigureUtil.configure(moduleClosure, dependencyHandler)
@@ -204,7 +230,7 @@ class DefaultDependencyHandlerTest {
         context.checking {
             allowing(dependencyFactoryStub).createModule(someNotation, configureClosure); will(returnValue(clientModule))
             allowing(dependencyFactoryStub).createDependency(clientModule); will(returnValue(clientModule))
-            one(configurationMock).addDependency(clientModule);
+            one(dependenciesMock).add(clientModule);
         }
 
         ConfigureUtil.configure(moduleClosure, dependencyHandler)
@@ -220,7 +246,7 @@ class DefaultDependencyHandlerTest {
             one(dependencyFactoryStub).createDependency(dependency)
             will(returnValue(dependency))
 
-            one(configurationMock).addDependency(dependency)
+            one(dependenciesMock).add(dependency)
         }
 
         Closure moduleClosure = {
@@ -239,7 +265,7 @@ class DefaultDependencyHandlerTest {
             one(dependencyFactoryStub).createDependency(dependency)
             will(returnValue(dependency))
 
-            one(configurationMock).addDependency(dependency)
+            one(dependenciesMock).add(dependency)
         }
 
         Closure moduleClosure = {

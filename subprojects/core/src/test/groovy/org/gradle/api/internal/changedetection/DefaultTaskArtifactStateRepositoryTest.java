@@ -16,35 +16,34 @@
 
 package org.gradle.api.internal.changedetection;
 
+import org.gradle.CacheUsage;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.invocation.Gradle;
-import org.gradle.cache.*;
-import org.gradle.util.*;
+import org.gradle.cache.CacheRepository;
+import org.gradle.cache.internal.DefaultCacheRepository;
+import org.gradle.testfixtures.internal.InMemoryCacheFactory;
+import org.gradle.util.HelperUtil;
+import org.gradle.util.RandomLongIdGenerator;
+import org.gradle.util.TemporaryFolder;
+import org.gradle.util.TestFile;
 import org.hamcrest.Matcher;
-import org.jmock.Expectations;
-import org.jmock.integration.junit4.JMock;
-import org.jmock.integration.junit4.JUnit4Mockery;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 
-import java.io.*;
+import java.io.File;
 import java.util.*;
 
-import static org.gradle.util.Matchers.*;
+import static org.gradle.util.Matchers.isEmpty;
 import static org.gradle.util.WrapUtil.*;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
-@RunWith(JMock.class)
 public class DefaultTaskArtifactStateRepositoryTest {
     @Rule
     public TemporaryFolder tmpDir = new TemporaryFolder();
-    private final JUnit4Mockery context = new JUnit4GroovyMockery();
-    private final CacheRepository cacheRepository = context.mock(CacheRepository.class);
     private final ProjectInternal project = HelperUtil.createRootProject();
     private final Gradle gradle = project.getGradle();
     private final TestFile outputFile = tmpDir.file("output-file");
@@ -60,33 +59,19 @@ public class DefaultTaskArtifactStateRepositoryTest {
     private final Set<TestFile> inputFiles = toSet(inputFile, inputDir, missingInputFile);
     private final Set<TestFile> outputFiles = toSet(outputFile, outputDir, emptyOutputDir, missingOutputFile);
     private final Set<TestFile> createFiles = toSet(outputFile, outputDirFile, outputDirFile2);
-    private final PersistentCache persistentCache = context.mock(PersistentCache.class);
     private DefaultTaskArtifactStateRepository repository;
 
     @Before
     public void setup() {
-        context.checking(new Expectations() {{
-            CacheBuilder builder = context.mock(CacheBuilder.class);
-
-            one(cacheRepository).cache("outputFileStates");
-            will(returnValue(builder));
-
-            one(builder).open();
-            will(returnValue(persistentCache));
-
-            one(persistentCache).openIndexedCache();
-            will(returnValue(new InMemoryIndexedCache()));
-        }});
-
+        CacheRepository cacheRepository = new DefaultCacheRepository(tmpDir.createDir("user-home"), "cache", CacheUsage.ON, new InMemoryCacheFactory());
         FileSnapshotter inputFilesSnapshotter = new DefaultFileSnapshotter(new DefaultHasher());
-        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(inputFilesSnapshotter, new RandomLongIdGenerator(), cacheRepository);
-        repository = new DefaultTaskArtifactStateRepository(cacheRepository, inputFilesSnapshotter, outputFilesSnapshotter);
+        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(inputFilesSnapshotter, new RandomLongIdGenerator(), cacheRepository, gradle);
+        TaskHistoryRepository taskHistoryRepository = new CacheBackedTaskHistoryRepository(cacheRepository, new CacheBackedFileSnapshotRepository(cacheRepository, gradle), gradle);
+        repository = new DefaultTaskArtifactStateRepository(taskHistoryRepository, inputFilesSnapshotter, outputFilesSnapshotter);
     }
 
     @Test
     public void artifactsAreNotUpToDateWhenCacheIsEmpty() {
-        expectEmptyCacheLocated();
-
         TaskArtifactState state = repository.getStateFor(task());
         assertNotNull(state);
         assertFalse(state.isUpToDate());
@@ -310,7 +295,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
     @Test
     public void artifactsAreNotUpToDateWhenStateHasNotBeenUpdated() {
-        expectEmptyCacheLocated();
         repository.getStateFor(task());
 
         TaskArtifactState state = repository.getStateFor(task());
@@ -321,7 +305,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
     public void artifactsAreNotUpToDateWhenOutputDirWhichUsedToExistHasBeenDeleted() {
         // Output dir already exists before first execution of task
         outputDirFile.createFile();
-        expectEmptyCacheLocated();
 
         TaskInternal task1 = builder().withOutputFiles(outputDir).createsFiles(outputDirFile).task();
         TaskInternal task2 = builder().withPath("other").withOutputFiles(outputDir).createsFiles(outputDirFile2).task();
@@ -376,8 +359,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
     @Test
     public void hasEmptyTaskHistoryWhenTaskHasNeverBeenExecuted() {
-        expectEmptyCacheLocated();
-
         TaskArtifactState state = repository.getStateFor(task());
         assertThat(state.getExecutionHistory().getOutputFiles().getFiles(), isEmpty());
     }
@@ -444,8 +425,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
     @Test
     public void considersExistingFileInOutputDirectoryWhichIsUpdatedByTheTaskAsProducedByTask() {
-        expectEmptyCacheLocated();
-
         TestFile otherFile = outputDir.file("other").createFile();
 
         TaskInternal task = task();
@@ -497,25 +476,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
     }
 
     @Test
-    public void artifactsAreNotUpToDateWhenTaskDoesNotProduceAnyOutputs() {
-        TaskInternal task = builder().doesNotProduceOutput().task();
-        execute(task);
-
-        TaskArtifactState state = repository.getStateFor(task);
-        assertFalse(state.isUpToDate());
-    }
-
-    @Test
-    public void taskHistoryIsEmptyWhenTaskDoesNotProduceAnyOutout() {
-        TaskInternal task = builder().doesNotProduceOutput().task();
-        execute(task);
-
-        TaskArtifactState state = repository.getStateFor(task);
-        assertFalse(state.isUpToDate());
-        assertThat(state.getExecutionHistory().getOutputFiles(), isEmpty());
-    }
-
-    @Test
     public void artifactsAreUpToDateWhenTaskHasNoInputFiles() {
         TaskInternal task = builder().withInputFiles().task();
         execute(task);
@@ -556,41 +516,12 @@ public class DefaultTaskArtifactStateRepositoryTest {
     }
 
     private void execute(TaskInternal... tasks) {
-        expectEmptyCacheLocated();
         for (TaskInternal task : tasks) {
             TaskArtifactState state = repository.getStateFor(task);
             state.isUpToDate();
             task.execute();
             state.afterTask();
         }
-    }
-
-    private void expectEmptyCacheLocated() {
-        context.checking(new Expectations() {{
-            CacheBuilder tasksCacheBuilder = context.mock(CacheBuilder.class);
-            CacheBuilder fileSnapshotCacheBuilder = context.mock(CacheBuilder.class);
-
-            one(cacheRepository).cache("taskArtifacts");
-            will(returnValue(tasksCacheBuilder));
-
-            one(tasksCacheBuilder).forObject(gradle);
-            will(returnValue(tasksCacheBuilder));
-
-            one(tasksCacheBuilder).open();
-            will(returnValue(persistentCache));
-
-            atMost(1).of(cacheRepository).cache("fileSnapshots");
-            will(returnValue(fileSnapshotCacheBuilder));
-
-            atMost(1).of(fileSnapshotCacheBuilder).open();
-            will(returnValue(persistentCache));
-
-            one(persistentCache).openIndexedCache(with(notNullValue(Serializer.class)));
-            will(returnValue(new InMemoryIndexedCache()));
-
-            atMost(1).of(persistentCache).openIndexedCache();
-            will(returnValue(new InMemoryIndexedCache()));
-        }});
     }
 
     private TaskInternal task() {
@@ -637,11 +568,6 @@ public class DefaultTaskArtifactStateRepositoryTest {
         TaskBuilder doesNotAcceptInput() {
             inputs = null;
             inputProperties = null;
-            return this;
-        }
-
-        public TaskBuilder doesNotProduceOutput() {
-            outputs = null;
             return this;
         }
 

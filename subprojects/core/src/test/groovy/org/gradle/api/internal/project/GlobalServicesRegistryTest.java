@@ -16,14 +16,11 @@
 
 package org.gradle.api.internal.project;
 
-import org.gradle.api.internal.ClassPathRegistry;
-import org.gradle.api.internal.DefaultClassPathProvider;
-import org.gradle.api.internal.DefaultClassPathRegistry;
-import org.gradle.api.internal.GradleDistributionLocator;
-import org.gradle.cache.AutoCloseCacheFactory;
-import org.gradle.cache.CacheFactory;
+import org.gradle.api.internal.*;
+import org.gradle.cache.internal.CacheFactory;
+import org.gradle.cache.internal.DefaultCacheFactory;
 import org.gradle.initialization.ClassLoaderRegistry;
-import org.gradle.initialization.CommandLineConverter;
+import org.gradle.cli.CommandLineConverter;
 import org.gradle.initialization.DefaultClassLoaderRegistry;
 import org.gradle.initialization.DefaultCommandLineConverter;
 import org.gradle.listener.DefaultListenerManager;
@@ -50,8 +47,8 @@ public class GlobalServicesRegistryTest {
     }
 
     @Test
-    public void providesACacheFactory() {
-        assertThat(registry.get(CacheFactory.class), instanceOf(AutoCloseCacheFactory.class));
+    public void providesACacheFactoryFactory() {
+        assertThat(registry.getFactory(CacheFactory.class), instanceOf(DefaultCacheFactory.class));
     }
 
     @Test
@@ -92,5 +89,15 @@ public class GlobalServicesRegistryTest {
     @Test
     public void providesAMessagingServer() {
         assertThat(registry.get(MessagingServer.class), instanceOf(MessagingServer.class));
+    }
+
+    @Test
+    public void providesAClassGenerator() {
+        assertThat(registry.get(ClassGenerator.class), instanceOf(AsmBackedClassGenerator.class));
+    }
+    
+    @Test
+    public void providesAnInstantiator() {
+        assertThat(registry.get(Instantiator.class), instanceOf(ClassGeneratorBackedInstantiator.class));
     }
 }

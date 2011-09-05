@@ -15,10 +15,11 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice;
 
-import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.DependencySet;
 import org.gradle.api.artifacts.ResolvedConfiguration;
 import org.gradle.api.internal.artifacts.IvyService;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
 import org.gradle.api.specs.Specs;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
@@ -29,7 +30,6 @@ import org.junit.runner.RunWith;
 import java.io.File;
 
 import static org.gradle.util.Matchers.isEmpty;
-import static org.gradle.util.WrapUtil.toDomainObjectSet;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
@@ -38,14 +38,18 @@ import static org.junit.Assert.assertThat;
 public class ShortcircuitEmptyConfigsIvyServiceTest {
     private final JUnit4Mockery context = new JUnit4Mockery();
     private final IvyService delegate = context.mock(IvyService.class);
-    private final Configuration configuration = context.mock(Configuration.class);
+    private final ConfigurationInternal configuration = context.mock(ConfigurationInternal.class);
+    private final DependencySet dependencies = context.mock(DependencySet.class);
     private final ShortcircuitEmptyConfigsIvyService ivyService = new ShortcircuitEmptyConfigsIvyService(delegate);
 
     @Test
     public void resolveReturnsEmptyResolvedConfigWhenConfigHasNoDependencies() {
         context.checking(new Expectations(){{
             allowing(configuration).getAllDependencies();
-            will(returnValue(toDomainObjectSet(Dependency.class)));
+            will(returnValue(dependencies));
+
+            allowing(dependencies).isEmpty();
+            will(returnValue(true));
         }});
 
         ResolvedConfiguration resolvedConfig = ivyService.resolve(configuration);
@@ -59,12 +63,14 @@ public class ShortcircuitEmptyConfigsIvyServiceTest {
 
     @Test
     public void resolveDelegatesToBackingServiceWhenConfigHasDependencies() {
-        final Dependency dependencyDummy = context.mock(Dependency.class);
         final ResolvedConfiguration resolvedConfigDummy = context.mock(ResolvedConfiguration.class);
 
         context.checking(new Expectations() {{
             allowing(configuration).getAllDependencies();
-            will(returnValue(toDomainObjectSet(Dependency.class, dependencyDummy)));
+            will(returnValue(dependencies));
+
+            allowing(dependencies).isEmpty();
+            will(returnValue(false));
 
             one(delegate).resolve(configuration);
             will(returnValue(resolvedConfigDummy));

@@ -1,10 +1,8 @@
-apply plugin: 'groovy'
-
 dependencies {
     groovy libraries.groovy_depends
 
     publishCompile project(':core'), project(':wrapper')
-
-    testCompile project(path: ':core', configuration: 'testFixtures')
-    testRuntime project(path: ':core', configuration: 'testFixturesRuntime')
 }
+
+useTestFixtures()
+

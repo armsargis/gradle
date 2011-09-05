@@ -16,6 +16,7 @@
 
 package org.gradle.plugins.ide.idea
 
+import java.util.regex.Pattern
 import junit.framework.AssertionFailedError
 import org.custommonkey.xmlunit.Diff
 import org.custommonkey.xmlunit.ElementNameAndAttributeQualifier
@@ -159,7 +160,7 @@ apply plugin: 'idea'
 
 def hookActivated = 0
 
-ideaModule {
+idea.module.iml {
     withXml { hookActivated++ }
 }
 
@@ -229,7 +230,7 @@ dependencies {
 apply plugin: 'java'
 apply plugin: 'idea'
 
-ideaModule {
+idea.module {
     inheritOutputDirs = false
     outputDir = file('foo-out')
     testOutputDir = file('foo-out-test')
@@ -285,20 +286,40 @@ idea.project {
 """)
     }
 
+    @Test
+    void showDecentMessageWhenInputFileWasTinkeredWith() {
+        //given
+        file('root.iml') << 'messed up iml file'
+
+        file('build.gradle') << '''
+apply plugin: "java"
+apply plugin: "idea"
+'''
+        file('settings.gradle') << 'rootProject.name = "root"'
+
+        //when
+        def failure = executer.withTasks('idea').runWithFailure()
+
+        //then
+        failure.output.contains("Perhaps this file was tinkered with?")
+    }
+
     private void assertHasExpectedContents(String path) {
         TestFile file = testDir.file(path).assertIsFile()
         TestFile expectedFile = testDir.file("expectedFiles/${path}.xml").assertIsFile()
 
-        def cache = distribution.userHomeDir.file("cache")
-        def cachePath = cache.absolutePath.replace(File.separator, '/')
-        def expectedXml = expectedFile.text.replace('@CACHE_DIR@', cachePath)
+        def expectedXml = expectedFile.text
 
-        Diff diff = new Diff(expectedXml, file.text)
+        def homeDir = distribution.userHomeDir.absolutePath.replace(File.separator, '/')
+        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts/(.+?/.+?)/[a-z0-9]+/")
+        def actualXml = file.text.replaceAll(pattern, "@CACHE_DIR@/\$1/@REPO@/")
+
+        Diff diff = new Diff(expectedXml, actualXml)
         diff.overrideElementQualifier(new ElementNameAndAttributeQualifier())
         try {
             XMLAssert.assertXMLEqual(diff, true)
         } catch (AssertionFailedError e) {
-            throw new AssertionFailedError("generated file '$path' does not contain the expected contents: ${e.message}.\nExpected:\n${expectedXml}\nActual:\n${file.text}").initCause(e)
+            throw new AssertionFailedError("generated file '$path' does not contain the expected contents: ${e.message}.\nExpected:\n${expectedXml}\nActual:\n${actualXml}").initCause(e)
         }
     }
 

@@ -18,14 +18,13 @@ package org.gradle.api.internal;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.DomainObjectCollection;
+import org.gradle.api.internal.collections.CollectionEventRegister;
+import org.gradle.api.internal.collections.CollectionFilter;
+import org.gradle.api.internal.collections.FilteredCollection;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.util.ConfigureUtil;
 import org.gradle.util.DeprecationLogger;
-
-import org.gradle.api.internal.collections.FilteredCollection;
-import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.CollectionEventRegister;
 
 import java.util.*;
 
@@ -34,6 +33,7 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     private final Class<T> type;
     private final CollectionEventRegister<T> eventRegister;
     private final Collection<T> store;
+    private final Set<Runnable> mutateActions = new LinkedHashSet<Runnable>();
 
     public DefaultDomainObjectCollection(Class<T> type, Collection<T> store) {
         this(type, store, new CollectionEventRegister<T>());
@@ -97,11 +97,13 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         return filtered(createFilter(type));
     }
 
+    @Deprecated
     public Set<T> getAll() {
         DeprecationLogger.nagUserWith("The DomainObjectCollection.getAll() method is deprecated as DomainObjectCollection is now a Collection itself. Simply use the collection.");
         return findAll(Specs.<T>satisfyAll());
     }
 
+    @Deprecated
     public Set<T> findAll(Spec<? super T> spec) {
         DeprecationLogger.nagUserWith("The DomainObjectCollection.findAll() method is deprecated as DomainObjectCollection is now a Collection itself. Use the matching(Spec) method.");
 
@@ -116,14 +118,16 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public Iterator<T> iterator() {
-        return getStore().iterator();
+        return new IteratorImpl(getStore().iterator());
     }
 
+    @Deprecated
     public void allObjects(Action<? super T> action) {
         DeprecationLogger.nagUser("DomainObjectCollection.allObjects()", "all()");
         all(action);
     }
 
+    @Deprecated
     public void allObjects(Closure action) {
         DeprecationLogger.nagUser("DomainObjectCollection.allObjects()", "all()");
         all(action);
@@ -173,6 +177,13 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         whenObjectRemoved(toAction(action));
     }
 
+    /**
+     * Adds an action which is executed before this collection is mutated. Any exception thrown by the action will veto the mutation.
+     */
+    public void beforeChange(Runnable action) {
+        mutateActions.add(action);
+    }
+
     private Action<? super T> toAction(final Closure action) {
         return new Action<T>() {
             public void execute(T t) {
@@ -182,6 +193,11 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean add(T toAdd) {
+        assertMutable();
+        return doAdd(toAdd);
+    }
+
+    private boolean doAdd(T toAdd) {
         if (getStore().add(toAdd)) {
             eventRegister.getAddAction().execute(toAdd);
             return true;
@@ -191,9 +207,10 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean addAll(Collection<? extends T> c) {
+        assertMutable();
         boolean changed = false;
         for (T o : c) {
-            if (add(o)) {
+            if (doAdd(o)) {
                 changed = true;
             }
         }
@@ -201,6 +218,7 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public void clear() {
+        assertMutable();
         Object[] c = toArray();
         getStore().clear();
         for (Object o : c) {
@@ -221,6 +239,11 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean remove(Object o) {
+        assertMutable();
+        return doRemove(o);
+    }
+
+    private boolean doRemove(Object o) {
         if (getStore().remove(o)) {
             eventRegister.getRemoveAction().execute((T)o);
             return true;
@@ -230,9 +253,10 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean removeAll(Collection<?> c) {
+        assertMutable();
         boolean changed = false;
         for (Object o : c) {
-            if (remove(o)) {
+            if (doRemove(o)) {
                 changed = true;
             }
         }
@@ -240,11 +264,12 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean retainAll(Collection<?> target) {
+        assertMutable();
         Object[] existingItems = toArray();
         boolean changed = false;
         for (Object existingItem : existingItems) {
             if (!target.contains(existingItem)) {
-                remove(existingItem);
+                doRemove(existingItem);
                 changed = true;
             }
         }
@@ -255,4 +280,45 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         return getStore().size();
     }
 
+    public Collection<T> findAll(Closure cl) {
+        return findAll(cl, new ArrayList<T>());
+    }
+
+    protected <S extends Collection<? super T>> S findAll(Closure cl, S matches) {
+        for (T t : filteredStore(createFilter(Specs.<Object>convertClosureToSpec(cl)))) {
+            matches.add(t);
+        }
+        return matches;
+    }
+
+    protected void assertMutable() {
+        for (Runnable action : mutateActions) {
+            action.run();
+        }
+    }
+
+    private class IteratorImpl implements Iterator<T> {
+        private final Iterator<T> iterator;
+        private T currentElement;
+
+        public IteratorImpl(Iterator<T> iterator) {
+            this.iterator = iterator;
+        }
+
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        public T next() {
+            currentElement = iterator.next();
+            return currentElement;
+        }
+
+        public void remove() {
+            assertMutable();
+            iterator.remove();
+            getEventRegister().getRemoveAction().execute(currentElement);
+            currentElement = null;
+        }
+    }
 }

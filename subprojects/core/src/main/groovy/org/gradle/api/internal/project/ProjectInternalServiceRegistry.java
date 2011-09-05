@@ -17,19 +17,19 @@
 package org.gradle.api.internal.project;
 
 import org.gradle.api.AntBuilder;
-import org.gradle.api.Project;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.Module;
 import org.gradle.api.artifacts.dsl.ArtifactHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
-import org.gradle.api.internal.ClassGenerator;
 import org.gradle.api.internal.Factory;
+import org.gradle.api.internal.Instantiator;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.artifacts.ArtifactPublicationServices;
 import org.gradle.api.internal.artifacts.DefaultModule;
 import org.gradle.api.internal.artifacts.DependencyManagementServices;
 import org.gradle.api.internal.artifacts.DependencyResolutionServices;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.artifacts.dsl.DefaultArtifactHandler;
 import org.gradle.api.internal.artifacts.dsl.PublishArtifactFactory;
@@ -96,7 +96,7 @@ public class ProjectInternalServiceRegistry extends DefaultServiceRegistry imple
     }
 
     protected Factory<TaskContainerInternal> createTaskContainerInternal() {
-        return new DefaultTaskContainerFactory(get(ClassGenerator.class), get(ITaskFactory.class), project);
+        return new DefaultTaskContainerFactory(get(Instantiator.class), get(ITaskFactory.class), project);
     }
 
     protected Convention createConvention() {
@@ -111,7 +111,7 @@ public class ProjectInternalServiceRegistry extends DefaultServiceRegistry imple
         return get(DependencyResolutionServices.class).getResolveRepositoryHandler();
     }
 
-    protected ConfigurationContainer createConfigurationContainer() {
+    protected ConfigurationContainerInternal createConfigurationContainer() {
         return get(DependencyResolutionServices.class).getConfigurationContainer();
     }
 
@@ -129,7 +129,7 @@ public class ProjectInternalServiceRegistry extends DefaultServiceRegistry imple
 
     protected ProjectFinder createProjectFinder() {
         return new ProjectFinder() {
-            public Project getProject(String path) {
+            public ProjectInternal getProject(String path) {
                 return project.project(path);
             }
         };

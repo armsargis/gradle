@@ -16,15 +16,18 @@
 
 package org.gradle.api.internal.project
 
+// redundant import to make project compile in IDEA (otherwise stub compilation fails)
+
+
 import java.awt.Point
 import java.text.FieldPosition
 import org.apache.tools.ant.types.FileSet
-import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.Module
 import org.gradle.api.artifacts.dsl.ArtifactHandler
 import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.initialization.dsl.ScriptHandler
+import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal
 import org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider
 import org.gradle.api.internal.artifacts.dsl.PublishArtifactFactory
@@ -49,15 +52,12 @@ import org.gradle.util.HelperUtil
 import org.gradle.util.JUnit4GroovyMockery
 import org.gradle.util.TestClosure
 import org.jmock.integration.junit4.JMock
-import org.jmock.lib.legacy.ClassImposteriser
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.gradle.api.*
 import org.gradle.api.internal.*
-// redundant import to make project compile in IDEA (otherwise stub compilation fails)
-import org.gradle.api.internal.Factory
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
 
@@ -106,12 +106,12 @@ class DefaultProjectTest {
     Convention convention = new DefaultConvention();
     FileOperations fileOperationsMock
     LoggingManagerInternal loggingManagerMock;
+    Instantiator instantiatorMock = context.mock(Instantiator)
 
     @Before
     void setUp() {
         rootDir = new File("/path/root").absoluteFile
 
-        context.imposteriser = ClassImposteriser.INSTANCE
         dependencyFactoryMock = context.mock(DependencyFactory.class)
         loggingManagerMock = context.mock(LoggingManagerInternal.class)
         taskContainerMock = context.mock(TaskContainerInternal.class);
@@ -144,9 +144,9 @@ class DefaultProjectTest {
         context.checking {
             allowing(projectServiceRegistryFactoryMock).createFor(withParam(notNullValue())); will(returnValue(serviceRegistryMock))
             allowing(serviceRegistryMock).newInstance(TaskContainerInternal); will(returnValue(taskContainerMock))
-            allowing(taskContainerMock).getAsDynamicObject(); will(returnValue(new BeanDynamicObject(new TaskContainerDynamicObject(someTask: testTask))))
+            allowing(taskContainerMock).getTasksAsDynamicObject(); will(returnValue(new BeanDynamicObject(new TaskContainerDynamicObject(someTask: testTask))))
             allowing(serviceRegistryMock).get(RepositoryHandler); will(returnValue(repositoryHandlerMock))
-            allowing(serviceRegistryMock).get(ConfigurationContainer); will(returnValue(configurationContainerMock))
+            allowing(serviceRegistryMock).get(ConfigurationContainerInternal); will(returnValue(configurationContainerMock))
             allowing(serviceRegistryMock).get(ArtifactHandler); will(returnValue(context.mock(ArtifactHandler)))
             allowing(serviceRegistryMock).get(DependencyHandler); will(returnValue(dependencyHandlerMock))
             allowing(serviceRegistryMock).get(Convention); will(returnValue(convention))
@@ -160,7 +160,7 @@ class DefaultProjectTest {
             allowing(serviceRegistryMock).get(IProjectRegistry); will(returnValue(projectRegistry))
             allowing(serviceRegistryMock).get(DependencyMetaDataProvider); will(returnValue(dependencyMetaDataProviderMock))
             allowing(serviceRegistryMock).get(FileResolver); will(returnValue([toString: { -> "file resolver" }] as FileResolver))
-            allowing(serviceRegistryMock).get(ClassGenerator); will(returnValue(new AsmBackedClassGenerator()))
+            allowing(serviceRegistryMock).get(Instantiator); will(returnValue(instantiatorMock))
             allowing(serviceRegistryMock).get(FileOperations);
             will(returnValue(fileOperationsMock))
             allowing(serviceRegistryMock).get(ScriptPluginFactory); will(returnValue([toString: { -> "script plugin factory" }] as ScriptPluginFactory))
@@ -171,7 +171,7 @@ class DefaultProjectTest {
         }
 
         // TODO - don't decorate the project objects
-        ClassGenerator classGenerator = new AsmBackedClassGenerator()
+        AsmBackedClassGenerator classGenerator = new AsmBackedClassGenerator()
         project = classGenerator.newInstance(DefaultProject.class, 'root', null, rootDir, script, build, projectServiceRegistryFactoryMock);
         child1 = classGenerator.newInstance(DefaultProject.class, "child1", project, new File("child1"), script, build, projectServiceRegistryFactoryMock)
         project.addChildProject(child1)
@@ -734,13 +734,12 @@ def scriptMethod(Closure closure) {
     }
 
     @Test void testSetPropertyAndPropertyMissingWithConventionProperty() {
-        String propertyName = 'conv'
         String expectedValue = 'somevalue'
         project.convention.plugins.test = new TestConvention()
-        project."$propertyName" = expectedValue
-        assertEquals(expectedValue, project."$propertyName")
-        assertEquals(expectedValue, project.convention."$propertyName")
-        assertEquals(expectedValue, child1."$propertyName")
+        project.conv = expectedValue
+        assertEquals(expectedValue, project.conv)
+        assertEquals(expectedValue, project.convention.plugins.test.conv)
+        assertEquals(expectedValue, child1.conv)
     }
 
     @Test void testSetPropertyAndPropertyMissingWithProjectAndConventionProperty() {
@@ -773,11 +772,7 @@ def scriptMethod(Closure closure) {
         assertFalse(child1.hasProperty(propertyName))
 
         project.convention.plugins.test = new FieldPosition(0)
-        project.convention."$propertyName" = 5
-        assertTrue(project.hasProperty(propertyName))
-        assertTrue(child1.hasProperty(propertyName))
-        project.convention = new DefaultConvention()
-        project."$propertyName" = 4
+        project."$propertyName" = 5
         assertTrue(project.hasProperty(propertyName))
         assertTrue(child1.hasProperty(propertyName))
     }
@@ -1039,12 +1034,14 @@ def scriptMethod(Closure closure) {
     }
 
     @Test void createsADomainObjectContainer() {
-        assertThat(project.container(String.class), instanceOf(FactoryNamedDomainObjectContainer.class))
-        assertThat(project.container(String.class), instanceOf(IConventionAware.class))
-
-        assertThat(project.container(String.class, context.mock(NamedDomainObjectFactory.class)), instanceOf(FactoryNamedDomainObjectContainer.class))
-
-        assertThat(project.container(String.class, { }), instanceOf(FactoryNamedDomainObjectContainer.class))
+        def container = context.mock(FactoryNamedDomainObjectContainer)
+        context.checking {
+            allowing(instantiatorMock).newInstance(withParam(equalTo(FactoryNamedDomainObjectContainer)), withParam(notNullValue()))
+            will(returnValue(container))
+        }
+        assertThat(project.container(String.class), sameInstance(container))
+        assertThat(project.container(String.class, context.mock(NamedDomainObjectFactory.class)), sameInstance(container))
+        assertThat(project.container(String.class, { }), sameInstance(container))
     }
 
 }

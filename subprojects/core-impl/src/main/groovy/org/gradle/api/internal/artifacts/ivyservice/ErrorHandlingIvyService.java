@@ -17,6 +17,7 @@ package org.gradle.api.internal.artifacts.ivyservice;
 
 import org.gradle.api.artifacts.*;
 import org.gradle.api.internal.artifacts.IvyService;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
 import org.gradle.api.specs.Spec;
 
 import java.io.File;
@@ -41,7 +42,7 @@ public class ErrorHandlingIvyService implements IvyService {
         }
     }
 
-    public ResolvedConfiguration resolve(final Configuration configuration) {
+    public ResolvedConfiguration resolve(final ConfigurationInternal configuration) {
         final ResolvedConfiguration resolvedConfiguration;
         try {
             resolvedConfiguration = ivyService.resolve(configuration);
@@ -70,6 +71,10 @@ public class ErrorHandlingIvyService implements IvyService {
 
         public boolean hasError() {
             return resolvedConfiguration.hasError();
+        }
+
+        public LenientConfiguration getLenientConfiguration() {
+            return resolvedConfiguration.getLenientConfiguration();
         }
 
         public void rethrowFailure() throws ResolveException {
@@ -124,6 +129,10 @@ public class ErrorHandlingIvyService implements IvyService {
 
         public boolean hasError() {
             return true;
+        }
+
+        public LenientConfiguration getLenientConfiguration() {
+            throw wrapException(e, configuration);
         }
 
         public void rethrowFailure() throws ResolveException {

@@ -3,6 +3,14 @@ import java.util.jar.Attributes
 apply plugin: 'groovy'
 
 archivesBaseName = "gradle-${name.replaceAll("\\p{Upper}") { "-${it.toLowerCase()}" } }"
+
+if (!sourceSets.main.groovy.srcDirs.any{ it.exists() }) {
+    // Remove configurations.groovy from compile and runtime classpaths.
+    configurations {
+        compile.extendsFrom = []
+    }
+}
+
 dependencies {
     testCompile libraries.junit, libraries.jmock, libraries.spock
 }
@@ -24,13 +32,22 @@ generatedResourcesDir = file("$buildDir/generated-resources/main")
 
 task classpathManifest {
     def manifestFile = new File(generatedResourcesDir, "${archivesBaseName}-classpath.properties")
+    def externalClasspath = configurations.runtime.fileCollection { it instanceof ExternalModuleDependency }
     outputs.file manifestFile
-    inputs.files configurations.runtime
+    inputs.files externalClasspath
     doLast {
         manifestFile.parentFile.mkdirs()
         def properties = new Properties()
-        properties.runtime = configurations.runtime.collect {it.name}.join(',')
+        properties.runtime = externalClasspath.collect {it.name}.join(',')
         manifestFile.withOutputStream { properties.save(it, 'classpath definitions') }
     }
 }
 sourceSets.main.output.dir generatedResourcesDir, buildBy: classpathManifest
+
+if (file("src/testFixtures").exists()) {
+    apply from: "$rootDir/gradle/testFixtures.gradle"
+}
+
+if (file("src/integTest").exists()) {
+    apply from: "$rootDir/gradle/integTest.gradle"
+}
