@@ -15,29 +15,26 @@
  */
 package org.gradle.api.internal.artifacts.configurations
 
-import org.gradle.api.internal.artifacts.IvyService
-import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
-
-import spock.lang.*
-import org.gradle.api.artifacts.Dependency
-import org.gradle.api.artifacts.ResolvedConfiguration
-import org.gradle.api.artifacts.SelfResolvingDependency
-import org.gradle.api.Task
-import org.gradle.api.tasks.TaskDependency
-import org.gradle.api.artifacts.ResolvableDependencies
 import org.gradle.api.Action
-import org.gradle.listener.ListenerManager
-import org.gradle.api.artifacts.DependencyResolutionListener
+import org.gradle.api.Task
+import org.gradle.api.internal.artifacts.ArtifactDependencyResolver
+import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
+import org.gradle.api.tasks.TaskDependency
 import org.gradle.listener.ListenerBroadcast
+import org.gradle.listener.ListenerManager
+import spock.lang.Specification
+import org.gradle.api.artifacts.*
 
 class DefaultConfigurationSpec extends Specification {
 
     ConfigurationsProvider configurationsProvider = Mock()
-    IvyService ivyService = Mock()
+    ArtifactDependencyResolver dependencyResolver = Mock()
     ListenerManager listenerManager = Mock()
+    DependencyMetaDataProvider metaDataProvider = Mock()
+    DefaultResolutionStrategy defaultResolutionStrategy = Mock()
 
     DefaultConfiguration conf(String confName = "conf", String path = ":conf") {
-        new DefaultConfiguration(path, confName, configurationsProvider, ivyService, listenerManager)
+        new DefaultConfiguration(path, confName, configurationsProvider, dependencyResolver, listenerManager, metaDataProvider, defaultResolutionStrategy)
     }
 
     DefaultPublishArtifact artifact(String name) {
@@ -173,8 +170,8 @@ class DefaultConfigurationSpec extends Specification {
         files.files
 
         then:
-        1 * ivyService.resolve(config) >> resolvedConfig
-        0 * ivyService._
+        1 * dependencyResolver.resolve(config) >> resolvedConfig
+        0 * dependencyResolver._
     }
 
     def "incoming dependencies set depends on all self resolving dependencies"() {
@@ -252,5 +249,23 @@ class DefaultConfigurationSpec extends Specification {
 
         then:
         1 * action.call()
+    }
+    
+    def "a recursive copy of a configuration includes inherited exclude rules"() {
+        given:
+        def (p1, p2, child) = [conf("p1"), conf("p2"), conf("child")]
+        child.extendsFrom p1, p2
+        
+        and:
+        def (p1Exclude, p2Exclude) = [[group: 'p1', module: 'p1'], [group: 'p2', module: 'p2']]
+        p1.exclude p1Exclude
+        p2.exclude p2Exclude
+        
+        when:
+        def copied = child.copyRecursive()
+        
+        then:
+        copied.excludeRules.size() == 2
+        copied.excludeRules*.excludeArgs.sort { it.group } == [p1Exclude, p2Exclude]
     }
 }

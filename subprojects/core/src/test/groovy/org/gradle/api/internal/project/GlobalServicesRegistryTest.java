@@ -17,8 +17,14 @@
 package org.gradle.api.internal.project;
 
 import org.gradle.api.internal.*;
+import org.gradle.api.internal.classpath.DefaultModuleRegistry;
+import org.gradle.api.internal.classpath.DefaultPluginModuleRegistry;
+import org.gradle.api.internal.classpath.ModuleRegistry;
+import org.gradle.api.internal.classpath.PluginModuleRegistry;
 import org.gradle.cache.internal.CacheFactory;
 import org.gradle.cache.internal.DefaultCacheFactory;
+import org.gradle.cache.internal.DefaultFileLockManager;
+import org.gradle.cache.internal.FileLockManager;
 import org.gradle.initialization.ClassLoaderRegistry;
 import org.gradle.cli.CommandLineConverter;
 import org.gradle.initialization.DefaultClassLoaderRegistry;
@@ -52,6 +58,16 @@ public class GlobalServicesRegistryTest {
     }
 
     @Test
+    public void providesAModuleRegistry() {
+        assertThat(registry.get(ModuleRegistry.class), instanceOf(DefaultModuleRegistry.class));
+    }
+
+    @Test
+    public void providesAPluginModuleRegistry() {
+        assertThat(registry.get(PluginModuleRegistry.class), instanceOf(DefaultPluginModuleRegistry.class));
+    }
+
+    @Test
     public void providesAClassPathRegistry() {
         assertThat(registry.get(ClassPathRegistry.class), instanceOf(DefaultClassPathRegistry.class));
     }
@@ -78,7 +94,7 @@ public class GlobalServicesRegistryTest {
     
     @Test
     public void providesAGradleDistributionLocator() {
-        assertThat(registry.get(GradleDistributionLocator.class), instanceOf(DefaultClassPathProvider.class));
+        assertThat(registry.get(GradleDistributionLocator.class), instanceOf(DefaultModuleRegistry.class));
     }
     
     @Test
@@ -99,5 +115,10 @@ public class GlobalServicesRegistryTest {
     @Test
     public void providesAnInstantiator() {
         assertThat(registry.get(Instantiator.class), instanceOf(ClassGeneratorBackedInstantiator.class));
+    }
+
+    @Test
+    public void providesAFileLockManager() {
+        assertThat(registry.get(FileLockManager.class), instanceOf(DefaultFileLockManager.class));
     }
 }

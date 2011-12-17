@@ -1,3 +1,6 @@
+/*
+ * Adds an 'integTest' source set, which contains the integration tests for the project.
+ */
 apply plugin: 'java'
 rootProject.apply plugin: IntegTestPlugin
 
@@ -49,20 +52,25 @@ integTestTasks.all {
     classpath = sourceSets.integTest.runtimeClasspath
     testSrcDirs = []
     jvmArgs '-XX:+HeapDumpOnOutOfMemoryError'
+    maxParallelForks = guessMaxForks()
 
     testResultsDir = file("${project.testResultsDir}/$name")
+
+    systemProperties['org.gradle.integtest.versions'] = 'latest'
 
     doFirst {
         testReportDir = file("${project.reportsDir}/$name")
         systemProperties['integTest.gradleHomeDir'] = integTestImageDir.absolutePath
         systemProperties['integTest.gradleUserHomeDir'] = integTestUserDir.absolutePath
         systemProperties['integTest.samplesdir'] = project(":docs").samplesDir.absolutePath
-        // TODO - remove this once wharf is behaving itself
-        delete "$integTestUserDir/worker-1"
+        if (isCIBuild()) {
+            systemProperties['org.gradle.integtest.versions'] = 'all'
+            maxParallelForks = 4
+        }
     }
 }
 
-['embedded', 'forking', 'daemon'].each {
+['embedded', 'forking', 'daemon', 'embeddedDaemon'].each {
     def mode = it
     def taskName = "${it}IntegTest"
     tasks.addRule(taskName) { name ->
@@ -73,34 +81,20 @@ integTestTasks.all {
     }
 }
 
-//exclude some of the daemon tests until we stabilize daemon and fix the tests
 daemonIntegTest {
-  exclude "**/org/gradle/integtests/tooling/**",
-          "**/SigningSamplesSpec.class", "**/CppHelloWorldExecutableIntegrationSpec.class", "**/CppSamplesSpec.class", "**/CodeQualityIntegrationTest.class",
-          "**/CommandLineIntegrationTest.class", "**/IncrementalBuildIntegrationTest.class", "**/EarPluginIntegrationTest.class",
-          "**/IncrementalTestIntegrationTest.class", "**/JUnitIntegrationTest.class", "**/JavaProjectIntegrationTest.class",
-          "**/LoggingIntegrationTest.class", "**/ProjectLayoutIntegrationTest.class",
-          "**/SamplesCustomPluginIntegrationTest.class", "**/SamplesMixedJavaAndScalaIntegrationTest.class",
-          "**/UserGuideSamplesIntegrationTest.class", "**/MavenDependencyResolutionIntegrationTest.class",
-          "**/MavenPublicationIntegrationTest.class", "**/SamplesMavenPomGenerationIntegrationTest.class",
-          "**/SamplesMavenQuickstartIntegrationTest.class", "**/PluginsAutoTestedSamplesTest.class",
-          "**/SampleTestNGIntegrationTest.class", "**/TestNGIntegrationTest.class"
+    systemProperties['org.gradle.integtest.daemon.registry'] = file("$rootProject.buildDir/daemon").absolutePath
 
-  doLast {
-      if (project.hasProperty("waitForDaemonsToDieMillis")) {
-         println "Property 'waitForDaemonsToDieMillis' passed so I'm waiting $project.waitForDaemonsToDieMillis millis so that deamons can die with honor..."
-         Thread.sleep(Integer.parseInt(project.waitForDaemonsToDieMillis));
-      }
-  }
+    doLast {
+        if (project.hasProperty("waitForDaemonsToDieMillis")) {
+            println "Property 'waitForDaemonsToDieMillis' passed so I'm waiting $project.waitForDaemonsToDieMillis millis so that deamons can die with honor..."
+            Thread.sleep(Integer.parseInt(project.waitForDaemonsToDieMillis));
+        }
+    }
 }
 
 task integTest(type: Test) {
     doFirst {
         systemProperties['org.gradle.integtest.executer'] = integTestMode
-    }
-    if (OperatingSystem.current().isWindows()) {
-        //Temporary hack to investigate windows build issues
-        exclude "**/org/gradle/integtests/tooling/**"
     }
 }
 
@@ -124,7 +118,7 @@ class IntegTestConvention {
         if (!project.tasks.findByName('ciBuild') || !project.gradle.taskGraph.populated) {
             return null
         }
-        if (project.isCIBuild() || OperatingSystem.current().isWindows()) {
+        if (project.isCIBuild()) {
             return 'forking'
         }
         return 'embedded'

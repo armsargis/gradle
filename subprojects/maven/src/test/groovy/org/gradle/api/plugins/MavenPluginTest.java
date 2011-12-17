@@ -19,9 +19,12 @@ import org.gradle.api.Task;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.maven.Conf2ScopeMapping;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
+import org.gradle.api.artifacts.maven.MavenResolver;
+import org.gradle.api.internal.DynamicObjectAware;
 import org.gradle.api.internal.project.DefaultProject;
 import org.gradle.api.tasks.Upload;
 import org.gradle.util.HelperUtil;
+import org.hamcrest.Matchers;
 
 import java.io.File;
 import java.util.Set;
@@ -39,11 +42,21 @@ public class MavenPluginTest {
     private final MavenPlugin mavenPlugin = new MavenPlugin();
 
     @org.junit.Test
-    public void addsConventionMappingsToRepositoriesHandler() {
+    public void addsConventionToProject() {
         mavenPlugin.apply(project);
 
-        assertThat(project.getRepositories().getMavenPomDir(), equalTo(new File(project.getBuildDir(), "poms")));
-        assertThat(project.getRepositories().getMavenScopeMappings(), notNullValue());
+        assertThat(project.getConvention().getPlugin(MavenPluginConvention.class), Matchers.<MavenPluginConvention>notNullValue());
+    }
+    
+    @org.junit.Test
+    public void defaultConventionValues() {
+        mavenPlugin.apply(project);
+
+        MavenPluginConvention convention = project.getConvention().getPlugin(MavenPluginConvention.class);
+        assertThat(convention.getMavenPomDir(), equalTo(new File(project.getBuildDir(), "poms")));
+        assertThat(convention.getPomDir(), equalTo(new File(project.getBuildDir(), "poms")));
+        assertThat(convention.getPomDirName(), equalTo("poms"));
+        assertThat(convention.getConf2ScopeMappings(), notNullValue());
     }
 
     @org.junit.Test
@@ -61,7 +74,7 @@ public class MavenPluginTest {
     }
 
     private void assertHasConfigurationAndMapping(DefaultProject project, String configurationName, String scope, int priority) {
-        Conf2ScopeMappingContainer scopeMappingContainer = project.getRepositories().getMavenScopeMappings();
+        Conf2ScopeMappingContainer scopeMappingContainer = project.getConvention().getPlugin(MavenPluginConvention.class).getConf2ScopeMappings();
         ConfigurationContainer configurationContainer = project.getConfigurations();
         Conf2ScopeMapping mapping = scopeMappingContainer.getMappings().get(configurationContainer.getByName(configurationName));
         assertThat(mapping.getScope(), equalTo(scope));
@@ -92,8 +105,32 @@ public class MavenPluginTest {
         mavenPlugin.apply(project);
 
         Upload task = project.getTasks().withType(Upload.class).getByName(MavenPlugin.INSTALL_TASK_NAME);
-        assertThat(task.getRepositories().getMavenPomDir(), equalTo(project.getRepositories().getMavenPomDir()));
-        assertThat(task.getRepositories().getMavenScopeMappings(), sameInstance(project.getRepositories().getMavenScopeMappings()));
+        assertThat(task.getRepositories().get(0), instanceOf(MavenResolver.class));
+    }
+
+    @org.junit.Test
+    public void addsConventionMappingToTheRepositoryContainerOfEachUploadTask() {
+        project.getPlugins().apply(JavaPlugin.class);
+        mavenPlugin.apply(project);
+
+        Upload task = project.getTasks().withType(Upload.class).getByName(MavenPlugin.INSTALL_TASK_NAME);
+        MavenRepositoryHandlerConvention convention = ((DynamicObjectAware) task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
+        assertThat(convention, notNullValue());
+
+        task = project.getTasks().add("customUpload", Upload.class);
+        convention = ((DynamicObjectAware) task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
+        assertThat(convention, notNullValue());
+    }
+
+    @org.junit.Test
+    public void addsConventionMappingToTheProjectRepositoryContainer() {
+        project.getPlugins().apply(JavaPlugin.class);
+        mavenPlugin.apply(project);
+
+        MavenPluginConvention convention = project.getConvention().getPlugin(MavenPluginConvention.class);
+        convention.setMavenPomDir(new File("pomDir").getAbsoluteFile());
+        
+        assertThat(project.getRepositories().getMavenPomDir(), equalTo(convention.getMavenPomDir()));
     }
 
     @org.junit.Test

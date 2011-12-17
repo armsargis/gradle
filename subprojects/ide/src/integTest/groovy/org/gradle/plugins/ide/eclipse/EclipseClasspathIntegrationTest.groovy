@@ -31,11 +31,14 @@ class EclipseClasspathIntegrationTest extends AbstractEclipseIntegrationTest {
     String content
 
     @Test
-    void "classpath contains library entries for external and file dependencies"() {
+    void classpathContainsLibraryEntriesForExternalAndFileDependencies() {
         //given
-        def jar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0').publishArtifact()
-        def srcJar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'sources').publishArtifact()
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'javadoc').publishArtifact()
+        def module = mavenRepo.module('coolGroup', 'niceArtifact', '1.0')
+        module.artifact(classifier: 'sources')
+        module.artifact(classifier: 'javadoc')
+        module.publish()
+        def jar = module.artifactFile
+        def srcJar = module.artifactFile(classifier: 'sources')
 
         //when
         runEclipseTask """
@@ -43,32 +46,77 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    maven { url "${mavenRepo.rootDir.toURI()}" }
+    maven { url "${mavenRepo.uri}" }
+    mavenCentral()
 }
 
 dependencies {
     compile 'coolGroup:niceArtifact:1.0'
+    compile 'commons-lang:commons-lang:2.6'
     compile files('lib/dep.jar')
 }
 """
 
         //then
         def libraries = classpath.libs
-        assert libraries.size() == 2
+        assert libraries.size() == 3
         libraries[0].assertHasJar(jar)
         libraries[0].assertHasSource(srcJar)
         libraries[0].assertHasNoJavadoc()
-        libraries[1].assertHasJar(file('lib/dep.jar'))
-        libraries[1].assertHasNoSource()
+        libraries[1].assertHasCachedJar('commons-lang', 'commons-lang', '2.6')
+        libraries[1].assertHasCachedSource('commons-lang', 'commons-lang', '2.6')
         libraries[1].assertHasNoJavadoc()
+        libraries[2].assertHasJar(file('lib/dep.jar'))
+        libraries[2].assertHasNoSource()
+        libraries[2].assertHasNoJavadoc()
     }
 
     @Test
-    void "substitutes path variables into library paths"() {
+    @Issue("GRADLE-1622")
+    void classpathContainsEntriesForDependenciesThatOnlyDifferByClassifier() {
+        given:
+        def module = mavenRepo.module('coolGroup', 'niceArtifact', '1.0')
+        module.artifact(classifier: 'extra')
+        module.artifact(classifier: 'tests')
+        module.publish()
+        def baseJar = module.artifactFile
+        def extraJar = module.artifactFile(classifier: 'extra')
+        def testsJar = module.artifactFile(classifier: 'tests')
+        def anotherJar = mavenRepo.module('coolGroup', 'another', '1.0').publish().artifactFile
+
+        when:
+        runEclipseTask """
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+repositories {
+    maven { url "${mavenRepo.uri}" }
+}
+
+dependencies {
+    compile 'coolGroup:niceArtifact:1.0'
+    compile 'coolGroup:niceArtifact:1.0:extra'
+    testCompile 'coolGroup:another:1.0'
+    testCompile 'coolGroup:niceArtifact:1.0:tests'
+}
+"""
+
+        then:
+        def libraries = classpath.libs
+        assert libraries.size() == 4
+        libraries[0].assertHasJar(baseJar)
+        libraries[1].assertHasJar(extraJar)
+        libraries[2].assertHasJar(testsJar)
+        libraries[3].assertHasJar(anotherJar)
+    }
+
+    @Test
+    void substituesPathVariablesIntoLibraryPaths() {
         //given
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0').publishArtifact()
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'sources').publishArtifact()
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'javadoc').publishArtifact()
+        def module = mavenRepo.module('coolGroup', 'niceArtifact', '1.0')
+        module.artifact(classifier: 'sources')
+        module.artifact(classifier: 'javadoc')
+        module.publish()
 
         //when
         runEclipseTask """
@@ -76,7 +124,7 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    maven { url "${mavenRepo.rootDir.toURI()}" }
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -85,7 +133,7 @@ dependencies {
 }
 
 eclipse {
-    pathVariables REPO_DIR: file('${mavenRepo.rootDir.toURI()}')
+    pathVariables REPO_DIR: file('${mavenRepo.uri}')
     pathVariables LIB_DIR: file('lib')
     classpath.downloadJavadoc = true
 }
@@ -101,7 +149,7 @@ eclipse {
     }
 
     @Test
-    void "can customise the classpath model"() {
+    void canCustomizeTheClasspathModel() {
         //when
         runEclipseTask """
 apply plugin: 'java'
@@ -140,21 +188,25 @@ eclipse {
   }
 }
 """
-        content = getFile([print: true], '.classpath').text
 
         //then
-        contains('foo.txt')
+        def vars = classpath.vars
+        assert vars.size() == 1
+        vars[0].assertHasJar("fooPathVariable/foo.txt")
 
-        contains('fooPathVariable')
-        contains('someFriendlyContainer', 'andYetAnotherContainer')
+        def containers = classpath.containers
+        assert containers.size() == 3
+        assert containers[1] == 'someFriendlyContainer'
+        assert containers[2] == 'andYetAnotherContainer'
 
-        contains('build-eclipse')
-        contains('<message>be cool')
+        assert classpath.output == 'build-eclipse'
+
+        assert classpath.classpath.message[0].text() == 'be cool'
     }
 
     @Test
     @Issue("GRADLE-1487")
-    void "handles plus minus configurations for self resolving deps"() {
+    void handlesPlusMinusConfigurationsForSelfResolvingDeps() {
         //when
         runEclipseTask """
 apply plugin: 'java'
@@ -175,11 +227,6 @@ eclipse.classpath {
     minusConfigurations += configurations.someOtherConfig
 }
 """
-        content = getFile([print: true], '.classpath').text
-
-        //then
-        contains 'foo.txt', 'bar.txt'
-        assert !content.contains('unwanted.txt')
 
         //then
         def libraries = classpath.libs
@@ -189,7 +236,7 @@ eclipse.classpath {
     }
 
     @Test
-    void "handles plus minus configurations for project deps"() {
+    void handlesPlusMinusConfigurationsForProjectDeps() {
         //when
         runEclipseTask "include 'foo', 'bar', 'unwanted'",
                 """
@@ -215,18 +262,16 @@ eclipse.classpath {
     minusConfigurations += configurations.someOtherConfig
 }
 """
-        content = getFile([print: true], '.classpath').text
 
         //then
-        contains 'foo', 'bar'
-        assert !content.contains('unwanted')
+        assert classpath.projects == ['/foo', '/bar']
     }
 
     @Test
-    void "handles plus minus configurations for external deps"() {
+    void handlesPlusMinusConfigurationsForExternalDeps() {
         //given
-        def jar = mavenRepo.module('coolGroup', 'coolArtifact', '1.0').dependsOn('coolGroup', 'unwantedArtifact', '1.0').publishArtifact()
-        mavenRepo.module('coolGroup', 'unwantedArtifact', '1.0').publishArtifact()
+        def jar = mavenRepo.module('coolGroup', 'coolArtifact', '1.0').dependsOn('coolGroup', 'unwantedArtifact', '1.0').publish().artifactFile
+        mavenRepo.module('coolGroup', 'unwantedArtifact', '1.0').publish()
 
         //when
         runEclipseTask """
@@ -239,7 +284,7 @@ configurations {
 }
 
 repositories {
-    maven { url "${mavenRepo.rootDir.toURI()}" }
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -260,11 +305,15 @@ eclipse.classpath {
     }
 
     @Test
-    void "can toggle javadoc and sources on"() {
+    void canToggleJavadocAndSourcesOn() {
         //given
-        def jar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0').publishArtifact()
-        def srcJar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'sources').publishArtifact()
-        def javadocJar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'javadoc').publishArtifact()
+        def module = mavenRepo.module('coolGroup', 'niceArtifact', '1.0')
+        module.artifact(classifier: 'sources')
+        module.artifact(classifier: 'javadoc')
+        module.publish()
+        def jar = module.artifactFile
+        def srcJar = module.artifactFile(classifier: 'sources')
+        def javadocJar = module.artifactFile(classifier: 'javadoc')
 
         //when
         runEclipseTask """
@@ -272,7 +321,7 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    maven { url "${mavenRepo.rootDir.toURI()}" }
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -294,11 +343,13 @@ eclipse.classpath {
     }
 
     @Test
-    void "can toggle javadoc and sources off"() {
+    void canToggleJavadocAndSourcesOff() {
         //given
-        def jar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0').publishArtifact()
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'sources').publishArtifact()
-        mavenRepo.module('coolGroup', 'niceArtifact', '1.0', 'javadoc').publishArtifact()
+        def module = mavenRepo.module('coolGroup', 'niceArtifact', '1.0')
+        module.artifact(classifier: 'sources')
+        module.artifact(classifier: 'javadoc')
+        module.publish()
+        def jar = module.artifactFile
 
         //when
         runEclipseTask """
@@ -306,7 +357,7 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    maven { url "${mavenRepo.rootDir.toURI()}" }
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -328,7 +379,7 @@ eclipse.classpath {
     }
 
     @Test
-    void "removes dependencies from existing classpath file when merging"() {
+    void removeDependenciesFromExistingClasspathFileWhenMerging() {
         //given
         getClasspathFile() << '''<?xml version="1.0" encoding="UTF-8"?>
 <classpath>
@@ -357,8 +408,33 @@ dependencies {
         libraries[0].assertHasJar(file('newDependency.jar'))
     }
 
+    @Issue('GRADLE-1953')
     @Test
-    void "can access xml model before and after generation"() {
+    void canConstructAndReconstructClasspathFromJavaSourceSets() {
+        given:
+        def buildFile = file("build.gradle") << """
+apply plugin: 'java'
+apply plugin: 'eclipse'
+"""
+        createJavaSourceDirs(buildFile)
+
+        when:
+        executer.usingBuildScript(buildFile).withTasks('eclipseClasspath').run()
+
+        then:
+        assert classpath.entries.size() == 4
+        assert classpath.sources.size() == 2
+
+        when:
+        executer.usingBuildScript(buildFile).withTasks('eclipseClasspath').run()
+
+        then:
+        assert classpath.entries.size() == 4
+        assert classpath.sources.size() == 2
+    }
+
+    @Test
+    void canAccessXmlModelBeforeAndAfterGeneration() {
         //given
         def classpath = getClasspathFile([:])
         classpath << '''<?xml version="1.0" encoding="UTF-8"?>
@@ -412,7 +488,7 @@ eclipseClasspath.doLast() {
 
     @Issue("GRADLE-1502")
     @Test
-    void "creates linked resources for source directories which are not under the project directory"() {
+    void createsLinkedResourcesForSourceDirectoriesWhichAreNotUnderTheProjectDirectory() {
         file('someGroovySrc').mkdirs()
 
         def settingsFile = file('settings.gradle')
@@ -450,7 +526,7 @@ project(':api') {
 
     @Issue("GRADLE-1402")
     @Test
-    void "should put sourceSet's output dir on classpath"() {
+    void shouldNotPutSourceSetsOutputDirOnClasspath() {
         testFile('build/generated/main/prod.resource').createFile()
         testFile('build/generated/test/test.resource').createFile()
 
@@ -470,14 +546,14 @@ sourceSets.test.output.dir "$buildDir/generated/test"
     }
 
     @Test
-    void "the 'buildBy' task be executed"() {
+    void theBuiltByTaskBeExecuted() {
         //when
         def result = runEclipseTask('''
 apply plugin: "java"
 apply plugin: "eclipse"
 
-sourceSets.main.output.dir "$buildDir/generated/main", buildBy: 'generateForMain'
-sourceSets.test.output.dir "$buildDir/generated/test", buildBy: 'generateForTest'
+sourceSets.main.output.dir "$buildDir/generated/main", builtBy: 'generateForMain'
+sourceSets.test.output.dir "$buildDir/generated/test", builtBy: 'generateForTest'
 
 task generateForMain << {}
 task generateForTest << {}
@@ -488,7 +564,7 @@ task generateForTest << {}
 
     @Test
     @Issue("GRADLE-1613")
-    void "should allow setting non-exported configurations"() {
+    void shouldAllowSettingNonExportedConfigurations() {
         //when
         runEclipseTask """
 apply plugin: 'java'
@@ -520,7 +596,38 @@ eclipse {
         libraries[1].assertNotExported()
     }
 
-    protected def contains(String... wanted) {
-        wanted.each { assert content.contains(it)}
+    @Test
+    void doesNotBreakWhenSomeDependenciesCannotBeResolved() {
+        //given
+        def repoJar = mavenRepo.module('coolGroup', 'niceArtifact', '1.0').publish().artifactFile
+        def localJar = file('someDependency.jar').createFile()
+
+        file("settings.gradle") << "include 'someApiProject'\n"
+
+        //when
+        runEclipseTask """
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'eclipse'
+}
+
+repositories {
+    maven { url "${mavenRepo.uri}" }
+}
+
+dependencies {
+    compile 'coolGroup:niceArtifact:1.0'
+    compile project(':someApiProject')
+    compile 'i.dont:Exist:1.0'
+    compile files('someDependency.jar')
+}
+"""
+
+        //then
+        def libraries = classpath.libs
+        assert libraries.size() == 3
+        libraries[0].assertHasJar(repoJar)
+        libraries[1].assertHasJar(file('unresolved dependency - i.dont#Exist;1.0'))
+        libraries[2].assertHasJar(localJar)
     }
 }

@@ -16,10 +16,10 @@
 package org.gradle.plugins.ide.eclipse
 
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.util.TextUtil
 import org.junit.Rule
 import org.junit.Test
 import spock.lang.Issue
-import org.gradle.util.TextUtil
 
 class EclipseIntegrationTest extends AbstractEclipseIntegrationTest {
     private static String nonAscii = "\\u7777\\u8888\\u9999"
@@ -84,15 +84,15 @@ sourceSets {
     @Test
     void canHandleCircularModuleDependencies() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2", "myArtifact1")
+        def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish().artifactFile
+        def artifact2 = maven(repoDir).module("myGroup", "myArtifact2").dependsOn("myArtifact1").publish().artifactFile
 
         runEclipseTask """
 apply plugin: "java"
 apply plugin: "eclipse"
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -192,15 +192,15 @@ tasks.eclipse << {
     @Test
     void respectsPerConfigurationExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish().artifactFile
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runEclipseTask """
 apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 configurations {
@@ -218,15 +218,15 @@ dependencies {
     @Test
     void respectsPerDependencyExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish().artifactFile
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runEclipseTask """
 apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -350,14 +350,14 @@ dependencies {
     @Issue("GRADLE-1706") // doesn't prove that the issue is fixed because the test also passes with 1.0-milestone-4
     void canHandleDependencyWithoutSourceJarInMavenRepo() {
         def repoDir = testDir.createDir("repo")
-        publishArtifact(repoDir, "some", "lib")
+        maven(repoDir).module("some", "lib").publish()
 
         runEclipseTask """
 apply plugin: "java"
 apply plugin: "eclipse"
 
 repositories {
-	mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {

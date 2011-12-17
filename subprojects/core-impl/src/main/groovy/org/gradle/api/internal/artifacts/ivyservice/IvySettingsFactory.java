@@ -18,27 +18,30 @@ package org.gradle.api.internal.artifacts.ivyservice;
 import org.apache.ivy.core.settings.IvySettings;
 import org.gradle.api.artifacts.ArtifactRepositoryContainer;
 import org.gradle.api.internal.Factory;
-import org.gradle.cache.CacheRepository;
-import org.gradle.cache.PersistentCache;
-import org.jfrog.wharf.ivy.cache.WharfCacheManager;
+import org.gradle.api.internal.artifacts.ivyservice.filestore.FileStore;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.DownloadingRepositoryCacheManager;
 
-import static org.gradle.cache.CacheBuilder.VersionStrategy;
+import java.io.File;
 
 public class IvySettingsFactory implements Factory<IvySettings> {
-    private final CacheRepository cacheRepository;
+    private final ArtifactCacheMetaData cacheMetaData;
+    private final FileStore fileStore;
 
-    public IvySettingsFactory(CacheRepository cacheRepository) {
-        this.cacheRepository = cacheRepository;
+    public IvySettingsFactory(ArtifactCacheMetaData cacheMetaData, FileStore fileStore) {
+        this.cacheMetaData = cacheMetaData;
+        this.fileStore = fileStore;
     }
 
     public IvySettings create() {
         IvySettings ivySettings = new IvySettings();
-        PersistentCache cache = cacheRepository.store("artifacts").withVersionStrategy(VersionStrategy.SharedCache).open();
-        ivySettings.setDefaultCache(cache.getBaseDir());
+        ivySettings.setDefaultCache(new File(cacheMetaData.getCacheDir(), "ivy"));
         ivySettings.setDefaultCacheIvyPattern(ArtifactRepositoryContainer.DEFAULT_CACHE_IVY_PATTERN);
         ivySettings.setDefaultCacheArtifactPattern(ArtifactRepositoryContainer.DEFAULT_CACHE_ARTIFACT_PATTERN);
         ivySettings.setVariable("ivy.log.modules.in.use", "false");
-        ivySettings.setDefaultRepositoryCacheManager(WharfCacheManager.newInstance(ivySettings));
+
+
+        ivySettings.setDefaultRepositoryCacheManager(new DownloadingRepositoryCacheManager("downloading", fileStore, ivySettings));
+
         return ivySettings;
     }
 }

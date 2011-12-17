@@ -18,8 +18,11 @@ package org.gradle.api.internal.project;
 
 import org.gradle.StartParameter;
 import org.gradle.api.internal.*;
-import org.gradle.cache.internal.CacheFactory;
-import org.gradle.cache.internal.DefaultCacheFactory;
+import org.gradle.api.internal.classpath.DefaultModuleRegistry;
+import org.gradle.api.internal.classpath.DefaultPluginModuleRegistry;
+import org.gradle.api.internal.classpath.ModuleRegistry;
+import org.gradle.api.internal.classpath.PluginModuleRegistry;
+import org.gradle.cache.internal.*;
 import org.gradle.cli.CommandLineConverter;
 import org.gradle.initialization.ClassLoaderRegistry;
 import org.gradle.initialization.DefaultClassLoaderRegistry;
@@ -29,6 +32,8 @@ import org.gradle.listener.ListenerManager;
 import org.gradle.logging.LoggingServiceRegistry;
 import org.gradle.messaging.remote.MessagingServer;
 import org.gradle.messaging.remote.internal.MessagingServices;
+import org.gradle.os.*;
+import org.gradle.os.jna.NativeEnvironment;
 import org.gradle.util.ClassLoaderFactory;
 import org.gradle.util.DefaultClassLoaderFactory;
 
@@ -49,11 +54,19 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
     }
 
     protected ClassPathRegistry createClassPathRegistry() {
-        return new DefaultClassPathRegistry();
+        return new DefaultClassPathRegistry(new DefaultClassPathProvider(get(ModuleRegistry.class)), new DynamicModulesClassPathProvider(get(ModuleRegistry.class), get(PluginModuleRegistry.class)));
+    }
+
+    protected DefaultModuleRegistry createModuleRegistry() {
+        return new DefaultModuleRegistry();
+    }
+
+    protected PluginModuleRegistry createPluginModuleRegistry() {
+        return new DefaultPluginModuleRegistry(get(ModuleRegistry.class));
     }
 
     protected Factory<CacheFactory> createCacheFactory() {
-        return new DefaultCacheFactory();
+        return new DefaultCacheFactory(get(FileLockManager.class));
     }
 
     protected ClassLoaderRegistry createClassLoaderRegistry() {
@@ -64,10 +77,6 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
         return new DefaultListenerManager();
     }
    
-    protected GradleDistributionLocator createGradleDistributionLocator() {
-        return new DefaultClassPathProvider();
-    }
-    
     protected ClassLoaderFactory createClassLoaderFactory() {
         return new DefaultClassLoaderFactory();
     }
@@ -86,5 +95,13 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
 
     protected Instantiator createInstantiator() {
         return new ClassGeneratorBackedInstantiator(get(ClassGenerator.class), new DirectInstantiator());
+    }
+
+    protected ProcessEnvironment createProcessEnvironment() {
+        return NativeEnvironment.current();
+    }
+    
+    protected FileLockManager createFileLockManager() {
+        return new DefaultFileLockManager(new DefaultProcessMetaDataProvider(get(ProcessEnvironment.class)));
     }
 }

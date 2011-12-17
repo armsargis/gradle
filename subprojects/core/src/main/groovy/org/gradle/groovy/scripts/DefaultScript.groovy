@@ -30,12 +30,13 @@ import org.gradle.api.logging.Logger
 import org.gradle.api.logging.Logging
 import org.gradle.api.logging.LoggingManager
 import org.gradle.api.plugins.ObjectConfigurationAction
+import org.gradle.api.resources.ResourceHandler
 import org.gradle.api.tasks.WorkResult
 import org.gradle.configuration.ScriptPluginFactory
-import org.gradle.util.ConfigureUtil
 import org.gradle.process.ExecResult
-import org.gradle.api.internal.file.*
+import org.gradle.util.ConfigureUtil
 import org.gradle.util.DeprecationLogger
+import org.gradle.api.internal.file.*
 
 abstract class DefaultScript extends BasicScript {
     private static final Logger LOGGER = Logging.getLogger(Script.class)
@@ -50,7 +51,7 @@ abstract class DefaultScript extends BasicScript {
         if (target instanceof FileOperations) {
             fileOperations = target
         } else if (scriptSource.resource.file) {
-            fileOperations = new DefaultFileOperations(new BaseDirConverter(scriptSource.resource.file.parentFile), null, null)
+            fileOperations = new DefaultFileOperations(new BaseDirFileResolver(scriptSource.resource.file.parentFile), null, null)
         } else {
             fileOperations = new DefaultFileOperations(new IdentityFileResolver(), null, null)
         }
@@ -124,6 +125,10 @@ abstract class DefaultScript extends BasicScript {
         fileOperations.tarTree(tarPath)
     }
 
+    ResourceHandler getResources() {
+        fileOperations.resources
+    }
+
     WorkResult copy(Closure closure) {
         fileOperations.copy(closure)
     }
@@ -153,12 +158,12 @@ abstract class DefaultScript extends BasicScript {
     }
 
     public void captureStandardOutput(LogLevel level) {
-        DeprecationLogger.nagUser('captureStandardOutput()', 'getLogging().captureStandardOutput()')
+        DeprecationLogger.nagUserOfReplacedMethod('captureStandardOutput()', 'getLogging().captureStandardOutput()')
         logging.captureStandardOutput(level)
     }
 
     public void disableStandardOutputCapture() {
-        DeprecationLogger.nagUser('disableStandardOutputCapture')
+        DeprecationLogger.nagUserOfDiscontinuedMethod('disableStandardOutputCapture')
         logging.disableStandardOutputCapture()
     }
 

@@ -22,10 +22,11 @@ import org.apache.tools.ant.Project
 import org.apache.tools.ant.taskdefs.ConditionTask
 import org.gradle.api.GradleException
 import org.gradle.api.internal.ClassPathRegistry
+import org.gradle.api.internal.DefaultClassPathProvider
 import org.gradle.api.internal.DefaultClassPathRegistry
-import org.gradle.api.internal.DependencyClassPathProvider
+import org.gradle.api.internal.classpath.DefaultModuleRegistry
+import org.gradle.api.internal.classpath.ModuleRegistry
 import org.gradle.api.internal.project.ant.BasicAntBuilder
-import org.gradle.initialization.ClassLoaderRegistry
 import org.gradle.logging.LoggingTestHelper
 import org.gradle.util.DefaultClassLoaderFactory
 import org.junit.After
@@ -36,7 +37,8 @@ import static org.junit.Assert.assertThat
 import static org.junit.Assert.fail
 
 class DefaultIsolatedAntBuilderTest {
-    private final ClassPathRegistry registry = new DefaultClassPathRegistry(new DependencyClassPathProvider({getClass().classLoader} as ClassLoaderRegistry))
+    private final ModuleRegistry moduleRegistry = new DefaultModuleRegistry()
+    private final ClassPathRegistry registry = new DefaultClassPathRegistry(new DefaultClassPathProvider(moduleRegistry))
     private final DefaultIsolatedAntBuilder builder = new DefaultIsolatedAntBuilder(registry, new DefaultClassLoaderFactory())
     private final TestAppender appender = new TestAppender()
     private final LoggingTestHelper helper = new LoggingTestHelper(appender)
@@ -44,7 +46,7 @@ class DefaultIsolatedAntBuilderTest {
 
     @Before
     public void attachAppender() {
-        classpath = registry.getClassPathFiles("LOCAL_GROOVY")
+        classpath = registry.getClassPathFiles("GROOVY")
         helper.attachAppender()
         helper.setLevel(Level.INFO);
     }

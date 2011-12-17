@@ -32,7 +32,6 @@ class FileReferenceFactory {
      */
     FileReference fromFile(File file) {
         if (!file) {
-
             return null
         }
         def path = null

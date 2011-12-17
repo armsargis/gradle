@@ -24,6 +24,7 @@ import org.junit.Before
 import org.junit.Test
 import static org.hamcrest.Matchers.containsString
 import static org.junit.Assert.assertThat
+import spock.lang.Issue
 
 /**
  * @author Hans Dockter
@@ -33,6 +34,7 @@ class WrapperProjectIntegrationTest extends AbstractIntegrationTest {
     @Before
     public void createBuildScript() {
         file("build.gradle") << """
+            import org.gradle.api.tasks.wrapper.Wrapper
             task wrapper(type: Wrapper) {
                 zipBase = Wrapper.PathBase.PROJECT
                 zipPath = 'wrapper'
@@ -45,6 +47,10 @@ class WrapperProjectIntegrationTest extends AbstractIntegrationTest {
 
             task hello << {
                 println 'hello'
+            }
+
+            task echoProperty << {
+                println "fooD=" + project.properties["fooD"]
             }
         """
         
@@ -65,5 +71,12 @@ class WrapperProjectIntegrationTest extends AbstractIntegrationTest {
     public void wrapperSample() {
         ExecutionResult result = wrapperExecuter.withTasks('hello').run()
         assertThat(result.output, containsString('hello'))
+    }
+    
+    @Test
+    @Issue("http://issues.gradle.org/browse/GRADLE-1871")
+    public void canSpecifyProjectPropertiesContainingD() {
+        ExecutionResult result = wrapperExecuter.withArguments("-PfooD=bar").withTasks('echoProperty').run()
+        assertThat(result.output, containsString("fooD=bar"))
     }
 }

@@ -54,14 +54,16 @@ import java.util.*;
 public class CommandLineParser {
     private Map<String, CommandLineOption> optionsByString = new HashMap<String, CommandLineOption>();
     private boolean allowMixedOptions;
+    private boolean allowUnknownOptions;
     OutputStream deprecationPrinter = System.out;
 
+    
     /**
      * Parses the given command-line.
      *
      * @param commandLine The command-line.
      * @return The parsed command line.
-     * @throws org.gradle.CommandLineArgumentException
+     * @throws org.gradle.cli.CommandLineArgumentException
      *          On parse failure.
      */
     public ParsedCommandLine parse(String[] commandLine) throws CommandLineArgumentException {
@@ -73,7 +75,7 @@ public class CommandLineParser {
      *
      * @param commandLine The command-line.
      * @return The parsed command line.
-     * @throws org.gradle.CommandLineArgumentException
+     * @throws org.gradle.cli.CommandLineArgumentException
      *          On parse failure.
      */
     public ParsedCommandLine parse(Iterable<String> commandLine) {
@@ -101,14 +103,28 @@ public class CommandLineParser {
                         parseState = parsedOption.onStartNextArg();
                     } else {
                         String option1 = arg.substring(1, 2);
-                        OptionParserState parsedOption = parseState.onStartOption("-" + option1, option1);
-                        if (parsedOption.getHasArgument()) {
-                            parseState = parsedOption.onArgument(arg.substring(2));
+                        OptionParserState parsedOption;
+                        if (optionsByString.containsKey(option1)) {
+                            parsedOption = parseState.onStartOption("-" + option1, option1);
+                            if (parsedOption.getHasArgument()) {
+                                parseState = parsedOption.onArgument(arg.substring(2));
+                            } else {
+                                parseState = parsedOption.onComplete();
+                                for (int i = 2; i < arg.length(); i++) {
+                                    String optionStr = arg.substring(i, i + 1);
+                                    parsedOption = parseState.onStartOption("-" + optionStr, optionStr);
+                                    parseState = parsedOption.onComplete();
+                                }
+                            }
                         } else {
-                            parseState = parsedOption.onComplete();
-                            for (int i = 2; i < arg.length(); i++) {
-                                String optionStr = arg.substring(i, i + 1);
-                                parsedOption = parseState.onStartOption("-" + optionStr, optionStr);
+                            if (allowUnknownOptions) {
+                                // if we are allowing unknowns, just pass through the whole arg
+                                parsedOption = parseState.onStartOption(arg, option);
+                                parseState = parsedOption.onComplete();
+                            } else {
+                                // We are going to throw a CommandLineArgumentException below, but want the message
+                                // to reflect that we didn't recognise the first char (i.e. the option specifier)
+                                parsedOption = parseState.onStartOption("-" + option1, option1);
                                 parseState = parsedOption.onComplete();
                             }
                         }
@@ -125,6 +141,11 @@ public class CommandLineParser {
 
     public CommandLineParser allowMixedSubcommandsAndOptions() {
         allowMixedOptions = true;
+        return this;
+    }
+
+    public CommandLineParser allowUnknownOptions() {
+        allowUnknownOptions = true;
         return this;
     }
 
@@ -275,7 +296,11 @@ public class CommandLineParser {
             OptionString optionString = new OptionString(arg, option);
             CommandLineOption commandLineOption = optionsByString.get(option);
             if (commandLineOption == null) {
-                throw new CommandLineArgumentException(String.format("Unknown command-line option '%s'.", optionString));
+                if (allowUnknownOptions) {
+                    return new UnknownOptionParserState(arg, commandLine, this);
+                } else {
+                    throw new CommandLineArgumentException(String.format("Unknown command-line option '%s'.", optionString));
+                }
             }
             return new KnownOptionParserState(optionString, commandLineOption, commandLine, this);
         }
@@ -434,7 +459,7 @@ public class CommandLineParser {
 
         @Override
         public boolean getHasArgument() {
-            return false;
+            return true;
         }
 
         @Override

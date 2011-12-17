@@ -16,21 +16,19 @@
 package org.gradle.cache.internal
 
 import org.gradle.CacheUsage
+import org.gradle.api.Action
+import org.gradle.cache.DefaultSerializer
 import org.gradle.util.TemporaryFolder
 import org.junit.Rule
 import spock.lang.Specification
-import org.gradle.cache.internal.btree.BTreePersistentIndexedCache
-import org.gradle.api.Action
-
-import org.gradle.cache.DefaultSerializer
-import org.gradle.cache.internal.CacheFactory.CrossVersionMode
 
 class DefaultCacheFactoryTest extends Specification {
     @Rule
     public final TemporaryFolder tmpDir = new TemporaryFolder()
     final Action<?> opened = Mock()
     final Action<?> closed = Mock()
-    private final DefaultCacheFactory factoryFactory = new DefaultCacheFactory() {
+    final ProcessMetaDataProvider metaDataProvider = Mock()
+    private final DefaultCacheFactory factoryFactory = new DefaultCacheFactory(new DefaultFileLockManager(metaDataProvider)) {
         @Override
         void onOpen(Object cache) {
             opened.execute(cache)
@@ -42,6 +40,11 @@ class DefaultCacheFactoryTest extends Specification {
         }
     }
 
+    def setup() {
+        _ * metaDataProvider.processIdentifier >> '123'
+        _ * metaDataProvider.processDisplayName >> 'process'
+    }
+
     def cleanup() {
         factoryFactory.close()
     }
@@ -49,36 +52,50 @@ class DefaultCacheFactoryTest extends Specification {
     public void "creates directory backed store instance"() {
         when:
         def factory = factoryFactory.create()
-        def cache = factory.openStore(tmpDir.dir, FileLockManager.LockMode.Shared, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.openStore(tmpDir.dir, "<display>", FileLockManager.LockMode.Shared, null)
 
         then:
         cache instanceof DefaultPersistentDirectoryStore
         cache.baseDir == tmpDir.dir
+        cache.toString().startsWith "<display>"
+
+        when:
+        factory.close()
+
+        then:
+        1 * closed.execute(cache)
     }
 
     public void "creates directory backed cache instance"() {
         when:
         def factory = factoryFactory.create()
-        def cache = factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Shared, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.open(tmpDir.dir, "<display>", CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Shared, null)
 
         then:
         cache instanceof DefaultPersistentDirectoryCache
         cache.baseDir == tmpDir.dir
+        cache.toString().startsWith "<display>"
+
+        when:
+        factory.close()
+
+        then:
+        1 * closed.execute(cache)
     }
 
     public void "creates indexed cache instance"() {
         when:
         def factory = factoryFactory.create()
-        def cache = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, new DefaultSerializer())
+        def cache = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, new DefaultSerializer())
 
         then:
-        cache instanceof BTreePersistentIndexedCache
+        cache instanceof MultiProcessSafePersistentIndexedCache
     }
 
     public void "creates state cache instance"() {
         when:
         def factory = factoryFactory.create()
-        def cache = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, new DefaultSerializer())
+        def cache = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, new DefaultSerializer())
 
         then:
         cache instanceof SimpleStateCache
@@ -87,8 +104,8 @@ class DefaultCacheFactoryTest extends Specification {
     public void "reuses directory backed cache instances"() {
         when:
         def factory = factoryFactory.create()
-        def ref1 = factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -99,8 +116,31 @@ class DefaultCacheFactoryTest extends Specification {
         when:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        def ref1 = factory1.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory2.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory1.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory2.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+
+        then:
+        ref1.is(ref2)
+        0 * closed._
+    }
+
+    public void "reuses directory backed store instances"() {
+        when:
+        def factory = factoryFactory.create()
+        def ref1 = factory.openStore(tmpDir.dir, null, FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory.openStore(tmpDir.dir, null, FileLockManager.LockMode.Exclusive, null)
+
+        then:
+        ref1.is(ref2)
+        0 * closed._
+    }
+
+    public void "reuses directory backed store instances across multiple sessions"() {
+        when:
+        def factory1 = factoryFactory.create()
+        def factory2 = factoryFactory.create()
+        def ref1 = factory1.openStore(tmpDir.dir, null, FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory2.openStore(tmpDir.dir, null, FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -110,8 +150,8 @@ class DefaultCacheFactoryTest extends Specification {
     public void "reuses indexed cache instances"() {
         when:
         def factory = factoryFactory.create()
-        def ref1 = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -122,8 +162,8 @@ class DefaultCacheFactoryTest extends Specification {
         when:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        def ref1 = factory1.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory1.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -133,8 +173,8 @@ class DefaultCacheFactoryTest extends Specification {
     public void "reuses state cache instances"() {
         when:
         def factory = factoryFactory.create()
-        def ref1 = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -145,8 +185,8 @@ class DefaultCacheFactoryTest extends Specification {
         when:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        def ref1 = factory1.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def ref2 = factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def ref1 = factory1.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def ref2 = factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         ref1.is(ref2)
@@ -157,8 +197,8 @@ class DefaultCacheFactoryTest extends Specification {
         given:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        factory1.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def oldCache = factory2.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def oldCache = factory2.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         factory1.close()
@@ -169,7 +209,7 @@ class DefaultCacheFactoryTest extends Specification {
 
         when:
         def factory = factoryFactory.create()
-        def cache = factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         !cache.is(oldCache)
@@ -181,8 +221,8 @@ class DefaultCacheFactoryTest extends Specification {
         given:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        factory1.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def oldCache = factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def oldCache = factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         factory1.close()
@@ -193,7 +233,7 @@ class DefaultCacheFactoryTest extends Specification {
 
         when:
         def factory = factoryFactory.create()
-        def cache = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         !cache.is(oldCache)
@@ -205,8 +245,8 @@ class DefaultCacheFactoryTest extends Specification {
         given:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        factory1.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        def oldCache = factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        def oldCache = factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         factory1.close()
@@ -217,7 +257,7 @@ class DefaultCacheFactoryTest extends Specification {
 
         when:
         def factory = factoryFactory.create()
-        def cache = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         !cache.is(oldCache)
@@ -229,10 +269,10 @@ class DefaultCacheFactoryTest extends Specification {
         given:
         def factory1 = factoryFactory.create()
         def factory2 = factoryFactory.create()
-        def oldCache = factory1.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
-        factory2.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def oldCache = factory1.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        factory2.openIndexedCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        factory2.openStateCache(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
+        factory2.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         factory1.close()
@@ -243,7 +283,7 @@ class DefaultCacheFactoryTest extends Specification {
 
         when:
         def factory = factoryFactory.create()
-        def cache = factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        def cache = factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         !oldCache.is(cache)
@@ -254,10 +294,10 @@ class DefaultCacheFactoryTest extends Specification {
     public void "fails when directory cache is already open with different properties"() {
         given:
         def factory = factoryFactory.create()
-        factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
-        factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         IllegalStateException e = thrown()
@@ -267,11 +307,11 @@ class DefaultCacheFactoryTest extends Specification {
     public void "fails when directory cache is already open with different properties in different session"() {
         given:
         def factory1 = factoryFactory.create()
-        factory1.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         def factory2 = factoryFactory.create()
-        factory2.open(tmpDir.dir, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory2.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         IllegalStateException e = thrown()
@@ -281,10 +321,10 @@ class DefaultCacheFactoryTest extends Specification {
     public void "fails when directory cache is already open when rebuild is requested"() {
         given:
         def factory = factoryFactory.create()
-        factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
-        factory.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         IllegalStateException e = thrown()
@@ -294,11 +334,11 @@ class DefaultCacheFactoryTest extends Specification {
     public void "fails when directory cache is already open in different session when rebuild is requested"() {
         given:
         def factory1 = factoryFactory.create()
-        factory1.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
         def factory2 = factoryFactory.create()
-        factory2.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory2.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         IllegalStateException e = thrown()
@@ -308,10 +348,10 @@ class DefaultCacheFactoryTest extends Specification {
     public void "can open directory cache when rebuild is requested and cache was rebuilt in same session"() {
         given:
         def factory = factoryFactory.create()
-        factory.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         when:
-        factory.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         notThrown(RuntimeException)
@@ -320,12 +360,12 @@ class DefaultCacheFactoryTest extends Specification {
     public void "can open directory cache when rebuild is requested and has been closed"() {
         given:
         def factory1 = factoryFactory.create()
-        factory1.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory1.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
         factory1.close()
 
         when:
         def factory2 = factoryFactory.create()
-        factory2.open(tmpDir.dir, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory2.open(tmpDir.dir, null, CacheUsage.REBUILD, [prop: 'value'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         notThrown(RuntimeException)
@@ -334,16 +374,13 @@ class DefaultCacheFactoryTest extends Specification {
     public void "fails when directory cache when cache is already open with different lock mode"() {
         given:
         def factory = factoryFactory.create()
-        factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Shared, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'value'], FileLockManager.LockMode.Shared, null)
 
         when:
-        factory.open(tmpDir.dir, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, CrossVersionMode.VersionSpecific, null)
+        factory.open(tmpDir.dir, null, CacheUsage.ON, [prop: 'other'], FileLockManager.LockMode.Exclusive, null)
 
         then:
         IllegalStateException e = thrown()
         e.message == "Cannot open cache '${tmpDir.dir}' with exclusive lock mode as it is already open with shared lock mode."
     }
 }
-
-
-

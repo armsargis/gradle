@@ -18,17 +18,22 @@ package org.gradle.api.plugins;
 import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.ArtifactRepositoryContainer;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
-import org.gradle.api.internal.ConventionMapping;
 import org.gradle.api.internal.IConventionAware;
+import org.gradle.api.publication.maven.internal.DefaultMavenFactory;
+import org.gradle.api.publication.maven.internal.MavenFactory;
+import org.gradle.api.internal.DynamicObjectAware;
+import org.gradle.api.internal.artifacts.dsl.DefaultRepositoryHandler;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.publication.maven.internal.DefaultDeployerFactory;
+import org.gradle.api.publication.maven.internal.DefaultMavenRepositoryHandlerConvention;
 import org.gradle.api.tasks.Upload;
-import org.gradle.util.WrapUtil;
+import org.gradle.logging.LoggingManagerInternal;
+import org.gradle.util.DeprecationLogger;
 
 import java.util.concurrent.Callable;
 
@@ -51,58 +56,71 @@ public class MavenPlugin implements Plugin<ProjectInternal> {
 
     public void apply(final ProjectInternal project) {
         project.getPlugins().apply(BasePlugin.class);
-        MavenPluginConvention pluginConvention = addConventionObject(project);
-        setConventionMapping(project, pluginConvention);
+
+        DefaultMavenFactory mavenFactory = new DefaultMavenFactory();
+        final MavenPluginConvention pluginConvention = addConventionObject(project, mavenFactory);
+        final DefaultDeployerFactory deployerFactory = new DefaultDeployerFactory(
+                mavenFactory,
+                project.getServices().getFactory(LoggingManagerInternal.class),
+                project.getFileResolver(),
+                pluginConvention,
+                project.getConfigurations(),
+                pluginConvention.getConf2ScopeMappings());
+
+        project.getTasks().withType(Upload.class, new Action<Upload>() {
+            public void execute(Upload upload) {
+                RepositoryHandler repositories = upload.getRepositories();
+                DefaultRepositoryHandler handler = (DefaultRepositoryHandler) repositories;
+                DefaultMavenRepositoryHandlerConvention repositoryConvention = new DefaultMavenRepositoryHandlerConvention(handler, deployerFactory);
+                ((DynamicObjectAware) repositories).getConvention().getPlugins().put("maven", repositoryConvention);
+            }
+        });
         PluginContainer plugins = project.getPlugins();
         plugins.withType(JavaPlugin.class, new Action<JavaPlugin>() {
             public void execute(JavaPlugin javaPlugin) {
-                configureJavaScopeMappings(project.getRepositories(), project.getConfigurations());
+                configureJavaScopeMappings(project.getConfigurations(), pluginConvention.getConf2ScopeMappings());
                 configureInstall(project);
             }
         });
         plugins.withType(WarPlugin.class, new Action<WarPlugin>() {
             public void execute(WarPlugin warPlugin) {
-                configureWarScopeMappings(project.getRepositories(), project.getConfigurations());
+                configureWarScopeMappings(project.getConfigurations(), pluginConvention.getConf2ScopeMappings());
+            }
+        });
+        addConventionMappings(project.getRepositories(), pluginConvention);
+    }
+
+    private void addConventionMappings(RepositoryHandler repositories, final MavenPluginConvention pluginConvention) {
+        ((IConventionAware) repositories).getConventionMapping().map("mavenPomDir", new Callable<Object>() {
+            public Object call() throws Exception {
+                DeprecationLogger.nagUserOfReplacedMethod("RepositoryHandler.getMavenPomDir()", "MavenPluginConvention.getMavenPomDir()");
+                return pluginConvention.getMavenPomDir();
             }
         });
     }
 
-    private void setConventionMapping(final Project project, final MavenPluginConvention pluginConvention) {
-        ConventionMapping conventionMapping = ((IConventionAware) project.getRepositories()).getConventionMapping();
-        conventionMapping.map("mavenPomDir", new Callable<Object>() {
-                    public Object call() throws Exception {
-                        return pluginConvention.getPomDir();
-                    }
-                });
-        conventionMapping.map("mavenScopeMappings", new Callable<Object>() {
-                    public Object call() throws Exception {
-                        return pluginConvention.getConf2ScopeMappings();
-                    }
-                });
-    }
-
-    private MavenPluginConvention addConventionObject(ProjectInternal project) {
-        MavenPluginConvention mavenConvention = new MavenPluginConvention(project);
+    private MavenPluginConvention addConventionObject(ProjectInternal project, MavenFactory mavenFactory) {
+        MavenPluginConvention mavenConvention = new MavenPluginConvention(project, mavenFactory);
         Convention convention = project.getConvention();
         convention.getPlugins().put("maven", mavenConvention);
         return mavenConvention;
     }
 
-    private void configureJavaScopeMappings(ArtifactRepositoryContainer repositoryFactory, ConfigurationContainer configurations) {
-        repositoryFactory.getMavenScopeMappings().addMapping(COMPILE_PRIORITY, configurations.getByName(JavaPlugin.COMPILE_CONFIGURATION_NAME),
+    private void configureJavaScopeMappings(ConfigurationContainer configurations, Conf2ScopeMappingContainer mavenScopeMappings) {
+        mavenScopeMappings.addMapping(COMPILE_PRIORITY, configurations.getByName(JavaPlugin.COMPILE_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.COMPILE);
-        repositoryFactory.getMavenScopeMappings().addMapping(RUNTIME_PRIORITY, configurations.getByName(JavaPlugin.RUNTIME_CONFIGURATION_NAME),
+        mavenScopeMappings.addMapping(RUNTIME_PRIORITY, configurations.getByName(JavaPlugin.RUNTIME_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.RUNTIME);
-        repositoryFactory.getMavenScopeMappings().addMapping(TEST_COMPILE_PRIORITY, configurations.getByName(JavaPlugin.TEST_COMPILE_CONFIGURATION_NAME),
+        mavenScopeMappings.addMapping(TEST_COMPILE_PRIORITY, configurations.getByName(JavaPlugin.TEST_COMPILE_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.TEST);
-        repositoryFactory.getMavenScopeMappings().addMapping(TEST_RUNTIME_PRIORITY, configurations.getByName(JavaPlugin.TEST_RUNTIME_CONFIGURATION_NAME),
+        mavenScopeMappings.addMapping(TEST_RUNTIME_PRIORITY, configurations.getByName(JavaPlugin.TEST_RUNTIME_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.TEST);
     }
 
-    private void configureWarScopeMappings(ArtifactRepositoryContainer repositoryContainer, ConfigurationContainer configurations) {
-        repositoryContainer.getMavenScopeMappings().addMapping(PROVIDED_COMPILE_PRIORITY, configurations.getByName(WarPlugin.PROVIDED_COMPILE_CONFIGURATION_NAME),
+    private void configureWarScopeMappings(ConfigurationContainer configurations, Conf2ScopeMappingContainer mavenScopeMappings) {
+        mavenScopeMappings.addMapping(PROVIDED_COMPILE_PRIORITY, configurations.getByName(WarPlugin.PROVIDED_COMPILE_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.PROVIDED);
-        repositoryContainer.getMavenScopeMappings().addMapping(PROVIDED_RUNTIME_PRIORITY, configurations.getByName(WarPlugin.PROVIDED_RUNTIME_CONFIGURATION_NAME),
+        mavenScopeMappings.addMapping(PROVIDED_RUNTIME_PRIORITY, configurations.getByName(WarPlugin.PROVIDED_RUNTIME_CONFIGURATION_NAME),
                 Conf2ScopeMappingContainer.PROVIDED);
     }
 
@@ -110,7 +128,8 @@ public class MavenPlugin implements Plugin<ProjectInternal> {
         Upload installUpload = project.getTasks().add(INSTALL_TASK_NAME, Upload.class);
         Configuration configuration = project.getConfigurations().getByName(Dependency.ARCHIVES_CONFIGURATION);
         installUpload.setConfiguration(configuration);
-        installUpload.getRepositories().mavenInstaller(WrapUtil.toMap("name", RepositoryHandler.DEFAULT_MAVEN_INSTALLER_NAME));
+        MavenRepositoryHandlerConvention repositories = ((DynamicObjectAware) installUpload.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
+        repositories.mavenInstaller();
         installUpload.setDescription("Does a maven install of the archives artifacts into the local .m2 cache.");
     }
 }

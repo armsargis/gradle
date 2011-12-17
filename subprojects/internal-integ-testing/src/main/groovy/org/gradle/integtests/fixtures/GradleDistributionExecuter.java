@@ -15,17 +15,19 @@
  */
 package org.gradle.integtests.fixtures;
 
-import org.gradle.StartParameter;
-import org.gradle.api.logging.LogLevel;
 import org.gradle.util.DeprecationLogger;
-import org.gradle.util.GUtil;
-import org.gradle.util.SetSystemProperties;
 import org.gradle.util.TestFile;
+import org.gradle.util.TextUtil;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.Statement;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.gradle.util.Matchers.containsLine;
+import static org.gradle.util.Matchers.matchesRegexp;
 
 /**
  * A Junit rule which provides a {@link GradleExecuter} implementation that executes Gradle using a given {@link
@@ -35,40 +37,30 @@ import java.io.File;
  * By default, this executer will execute Gradle in a forked process. There is a system property which enables executing
  * Gradle in the current process.
  */
-public class GradleDistributionExecuter extends AbstractGradleExecuter implements MethodRule {
-    private static final String IGNORE_SYS_PROP = "org.gradle.integtest.ignore";
+public class GradleDistributionExecuter extends AbstractDelegatingGradleExecuter implements MethodRule {
     private static final String EXECUTER_SYS_PROP = "org.gradle.integtest.executer";
+
     private GradleDistribution dist;
     private boolean workingDirSet;
     private boolean userHomeSet;
     private boolean deprecationChecksOn = true;
-    private Executer executerType;
-
-    /**
-     * Useful at development time when someone wants to explicitly run some test against the daemon from the IDE.
-     * Rather not check-in any test that uses this rule because...
-     * our harness has nice ways of running all integ tests against particular gradle executer using task rules (e.g. daemonIntegTest, forkingIntegTest, etc.)
-     */
-    public static class UseDaemon extends SetSystemProperties implements MethodRule {
-        public UseDaemon() {
-            super(GUtil.map(EXECUTER_SYS_PROP, Executer.daemon.name()));
-        }
-    }
+    private final Executer executerType;
 
     public enum Executer {
-        embedded(false), 
-        forking(true), 
-        daemon(true);
-        
+        embedded(false),
+        forking(true),
+        daemon(true),
+        embeddedDaemon(false);
+
         final public boolean forks;
-        
+
         Executer(boolean forks) {
             this.forks = forks;
         }
     }
 
     public static Executer getSystemPropertyExecuter() {
-        return Executer.valueOf(System.getProperty(EXECUTER_SYS_PROP, Executer.forking.toString()).toLowerCase());
+        return Executer.valueOf(System.getProperty(EXECUTER_SYS_PROP, Executer.forking.toString()));
     }
 
     public GradleDistributionExecuter() {
@@ -78,7 +70,7 @@ public class GradleDistributionExecuter extends AbstractGradleExecuter implement
     public GradleDistributionExecuter(Executer executerType) {
         this.executerType = executerType;
     }
-    
+
     public GradleDistributionExecuter(GradleDistribution dist) {
         this(getSystemPropertyExecuter(), dist);
     }
@@ -93,20 +85,7 @@ public class GradleDistributionExecuter extends AbstractGradleExecuter implement
         return executerType;
     }
 
-    public void setType(Executer executerType) {
-        this.executerType = executerType;
-    }
-
     public Statement apply(Statement base, final FrameworkMethod method, Object target) {
-        if (System.getProperty(IGNORE_SYS_PROP) != null) {
-            return new Statement() {
-                @Override
-                public void evaluate() throws Throwable {
-                    System.out.println(String.format("Skipping test '%s'", method.getName()));
-                }
-            };
-        }
-
         if (dist == null) {
             dist = RuleHelper.getField(target, GradleDistribution.class);
         }
@@ -138,38 +117,78 @@ public class GradleDistributionExecuter extends AbstractGradleExecuter implement
         return this;
     }
 
-    @Override
-    protected ExecutionResult doRun() {
-        return checkResult(configureExecuter().run());
-    }
-
-    @Override
-    protected ExecutionFailure doRunWithFailure() {
-        return checkResult(configureExecuter().runWithFailure());
-    }
-
     public GradleDistributionExecuter withDeprecationChecksDisabled() {
         deprecationChecksOn = false;
         return this;
     }
 
-    private <T extends ExecutionResult> T checkResult(T result) {
+    protected <T extends ExecutionResult> T checkResult(T result) {
         // Assert that nothing unexpected was logged
-        result.assertOutputHasNoStackTraces();
-        result.assertErrorHasNoStackTraces();
+        assertOutputHasNoStackTraces(result);
+        assertErrorHasNoStackTraces(result);
         if (deprecationChecksOn) {
-            result.assertOutputHasNoDeprecationWarnings();
+            assertOutputHasNoDeprecationWarnings(result);
         }
 
         if (getExecutable() == null) {
             // Assert that no temp files are left lying around
             // Note: don't do this if a custom executable is used, as we don't know (and probably don't care) whether the executable cleans up or not
-            getTmpDir().assertIsEmptyDir();
+            List<String> unexpectedFiles = new ArrayList<String>();
+            for (File file : getTmpDir().listFiles()) {
+                if (!file.getName().matches("maven-artifact\\d+.tmp")) {
+                    unexpectedFiles.add(file.getName());
+                }
+            }
+//            Assert.assertThat(unexpectedFiles, Matchers.isEmpty());
         }
+
+        /*
+        File resolversFile = new File(getUserHomeDir(), "caches/artifacts-2/.wharf/resolvers.kryo");
+        Assert.assertTrue(resolversFile.getParentFile().isDirectory());
+        if (resolversFile.exists()) {
+            Assert.assertThat(resolversFile.length(), Matchers.greaterThan(0L));
+        }
+        */
+
         return result;
     }
 
-    private GradleExecuter configureExecuter() {
+    private void assertOutputHasNoStackTraces(ExecutionResult result) {
+        assertNoStackTraces(result.getOutput(), "Standard output");
+    }
+
+    public void assertErrorHasNoStackTraces(ExecutionResult result) {
+        String error = result.getError();
+        if (result instanceof ExecutionFailure) {
+            // Axe everything after the expected exception
+            int pos = error.lastIndexOf("* Exception is:" + TextUtil.getPlatformLineSeparator());
+            if (pos >= 0) {
+                error = error.substring(0, pos);
+            }
+        }
+        assertNoStackTraces(error, "Standard error");
+    }
+
+    public void assertOutputHasNoDeprecationWarnings(ExecutionResult result) {
+        assertNoDeprecationWarnings(result.getOutput(), "Standard output");
+        assertNoDeprecationWarnings(result.getError(), "Standard error");
+    }
+
+    private void assertNoDeprecationWarnings(String output, String displayName) {
+        boolean javacWarning = containsLine(matchesRegexp(".*use(s)? or override(s)? a deprecated API\\.")).matches(output);
+        boolean deprecationWarning = containsLine(matchesRegexp(".*deprecated.*")).matches(output);
+        if (deprecationWarning && !javacWarning) {
+            throw new AssertionError(String.format("%s contains a deprecation warning:%n=====%n%s%n=====%n", displayName, output));
+        }
+    }
+
+    private void assertNoStackTraces(String output, String displayName) {
+        if (containsLine(matchesRegexp("\\s+at [\\w.$_]+\\([\\w._]+:\\d+\\)")).matches(output)) {
+            throw new AssertionError(String.format("%s contains an unexpected stack trace:%n=====%n%s%n=====%n", displayName, output));
+        }
+    }
+
+    protected GradleExecuter configureExecuter() {
         if (!workingDirSet) {
             inDirectory(dist.getTestDir());
         }
@@ -181,26 +200,28 @@ public class GradleDistributionExecuter extends AbstractGradleExecuter implement
             throw new RuntimeException("Assertions must be enabled when running integration tests.");
         }
 
-        StartParameter parameter = new StartParameter();
-        parameter.setLogLevel(LogLevel.INFO);
-        parameter.setSearchUpwards(false);
-
-        InProcessGradleExecuter inProcessGradleExecuter = new InProcessGradleExecuter(parameter);
+        InProcessGradleExecuter inProcessGradleExecuter = new InProcessGradleExecuter();
         copyTo(inProcessGradleExecuter);
 
         GradleExecuter returnedExecuter = inProcessGradleExecuter;
 
-        if (executerType != Executer.embedded || !inProcessGradleExecuter.canExecute()) {
+        TestFile tmpDir = getTmpDir();
+        tmpDir.deleteDir().createDir();
+
+        if (executerType.forks || !inProcessGradleExecuter.canExecute()) {
             boolean useDaemon = executerType == Executer.daemon && getExecutable() == null;
-            ForkingGradleExecuter forkingGradleExecuter = useDaemon ? new DaemonGradleExecuter(dist.getGradleHomeDir()) : new ForkingGradleExecuter(dist.getGradleHomeDir());
+            ForkingGradleExecuter forkingGradleExecuter = useDaemon ? new DaemonGradleExecuter(dist) : new ForkingGradleExecuter(dist.getGradleHomeDir());
             copyTo(forkingGradleExecuter);
-            TestFile tmpDir = getTmpDir();
-            if (tmpDir != null) {
-                tmpDir.deleteDir().createDir();
-                forkingGradleExecuter.addGradleOpts(String.format("-Djava.io.tmpdir=%s", tmpDir));
-                forkingGradleExecuter.addGradleOpts(String.format("-Dorg.gradle.daemon.idletimeout=%s", 5 * 60 * 1000));
-            }
+            forkingGradleExecuter.addGradleOpts(String.format("-Djava.io.tmpdir=%s", tmpDir));
             returnedExecuter = forkingGradleExecuter;
+//        } else {
+//            System.setProperty("java.io.tmpdir", tmpDir.getAbsolutePath());
+        }
+
+        if (executerType == Executer.embeddedDaemon) {
+            GradleExecuter embeddedDaemonExecutor = new EmbeddedDaemonGradleExecuter();
+            copyTo(embeddedDaemonExecutor);
+            returnedExecuter = embeddedDaemonExecutor;
         }
 
         boolean settingsFound = false;

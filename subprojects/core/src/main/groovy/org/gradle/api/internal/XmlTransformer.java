@@ -24,7 +24,7 @@ import org.apache.commons.lang.StringUtils;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.gradle.api.Action;
 import org.gradle.api.Transformer;
-import org.gradle.api.artifacts.maven.XmlProvider;
+import org.gradle.api.XmlProvider;
 import org.gradle.util.GUtil;
 import org.gradle.util.SystemProperties;
 import org.gradle.util.TextUtil;
@@ -43,7 +43,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class XmlTransformer implements Transformer<String> {
+public class XmlTransformer implements Transformer<String, String> {
     private final List<Action<? super XmlProvider>> actions = new ArrayList<Action<? super XmlProvider>>();
     private String indentation = "  ";
 

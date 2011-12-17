@@ -26,10 +26,14 @@ import org.junit.Test
 import static org.hamcrest.Matchers.containsString
 import static org.hamcrest.Matchers.equalTo
 import static org.junit.Assert.assertThat
+import org.gradle.util.PreconditionVerifier
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 
 class DistributionIntegrationTest {
     @Rule public final GradleDistribution dist = new GradleDistribution()
     @Rule public final GradleDistributionExecuter executer = new GradleDistributionExecuter()
+    @Rule public final PreconditionVerifier preconditions = new PreconditionVerifier()
     private String version = GradleVersion.current().version
 
     @Test
@@ -97,6 +101,7 @@ class DistributionIntegrationTest {
         contentsDir.file('LICENSE').assertIsFile()
 
         // Libs
+        assertIsGradleJar(contentsDir.file("lib/gradle-cli-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/gradle-core-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/gradle-ui-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/gradle-launcher-${version}.jar"))
@@ -104,6 +109,7 @@ class DistributionIntegrationTest {
         assertIsGradleJar(contentsDir.file("lib/gradle-wrapper-${version}.jar"))
 
         // Plugins
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-core-impl-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-plugins-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-ide-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-scala-${version}.jar"))
@@ -116,6 +122,7 @@ class DistributionIntegrationTest {
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-osgi-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-signing-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-cpp-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-ear-${version}.jar"))
 
         // Docs
         contentsDir.file('getting-started.html').assertIsFile()
@@ -127,7 +134,7 @@ class DistributionIntegrationTest {
         assertThat(jar.manifest.mainAttributes.getValue('Implementation-Title'), equalTo('Gradle'))
     }
 
-    @Test
+    @Test @Requires(TestPrecondition.NOT_WINDOWS)
     public void sourceZipContents() {
         TestFile srcZip = dist.distributionsDir.file("gradle-$version-src.zip")
         srcZip.usingNativeTools().unzipTo(dist.testDir)

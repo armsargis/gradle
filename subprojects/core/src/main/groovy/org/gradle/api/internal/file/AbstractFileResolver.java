@@ -22,13 +22,18 @@ import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection;
-import org.gradle.util.GFileUtils;
-import org.gradle.util.OperatingSystem;
+import org.gradle.api.resources.ReadableResource;
+import org.gradle.os.FileSystems;
+import org.gradle.os.OperatingSystem;
+import org.gradle.util.GUtil;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,7 +43,7 @@ public abstract class AbstractFileResolver implements FileResolver {
     private static final Pattern ENCODED_URI = Pattern.compile("%([0-9a-fA-F]{2})");
 
     public FileResolver withBaseDir(Object path) {
-        return new BaseDirConverter(resolve(path));
+        return new BaseDirFileResolver(resolve(path));
     }
 
     public File resolve(Object path) {
@@ -47,9 +52,82 @@ public abstract class AbstractFileResolver implements FileResolver {
 
     public File resolve(Object path, PathValidation validation) {
         File file = doResolve(path);
-        file = GFileUtils.canonicalise(file);
+
+        file = normalise(file);
+
         validate(file, validation);
+
         return file;
+    }
+
+    // normalizes a path in similar ways as File.getCanonicalFile(), except that it
+    // does NOT resolve symlinks (by design)
+    private File normalise(File file) {
+        try {
+            assert file.isAbsolute() : String.format("Cannot normalize a relative file: '%s'", file);
+
+            if (OperatingSystem.current().isWindows()) {
+                // on Windows, File.getCanonicalFile() doesn't resolve symlinks
+                return file.getCanonicalFile();
+            }
+
+            String[] segments = file.getPath().split(String.format("[/%s]", Pattern.quote(File.separator)));
+            List<String> path = new ArrayList<String>(segments.length);
+            for (String segment : segments) {
+                if (segment.equals("..")) {
+                    if (!path.isEmpty()) {
+                        path.remove(path.size() - 1);
+                    }
+                } else if (!segment.equals(".") && segment.length() > 0) {
+                    path.add(segment);
+                }
+            }
+
+            String resolvedPath = GUtil.join(path, File.separator);
+            boolean needLeadingSeparator = File.listRoots()[0].getPath().startsWith(File.separator);
+            if (needLeadingSeparator) {
+                resolvedPath = File.separator + resolvedPath;
+            }
+            File candidate = new File(resolvedPath);
+            if (FileSystems.getDefault().isCaseSensitive()) {
+                return candidate;
+            }
+
+            // Short-circuit the slower lookup method by using the canonical file
+            File canonical = candidate.getCanonicalFile();
+            if (candidate.getPath().equalsIgnoreCase(canonical.getPath())) {
+                return canonical;
+            }
+
+            // Canonical path is different to what we expected (eg there is a link somewhere in there). Normalise a segment at a time
+            // TODO - start resolving only from where the expected and canonical paths are different
+            File current = File.listRoots()[0];
+            for (int pos = 0; pos < path.size(); pos++) {
+                File child = findChild(current, path.get(pos));
+                if (child == null) {
+                    current = new File(current, GUtil.join(path.subList(pos, path.size()), File.separator));
+                    break;
+                }
+                current = child;
+            }
+            return current;
+        } catch (IOException e) {
+            throw new UncheckedIOException(String.format("Could not normalize path for file '%s'.", file), e);
+        }
+    }
+
+    private File findChild(File current, String segment) throws IOException {
+        String[] children = current.list();
+        if (children == null) {
+            return null;
+        }
+        // TODO - find some native methods for doing this
+        for (String child : children) {
+            if (child.equalsIgnoreCase(segment)) {
+                return new File(current, child);
+            }
+        }
+        return new File(current, segment);
     }
 
     public FileSource resolveLater(final Object path) {
@@ -116,7 +194,7 @@ public abstract class AbstractFileResolver implements FileResolver {
         for (File file : File.listRoots()) {
             String rootPath = file.getAbsolutePath();
             String normalisedStr = str;
-            if (!OperatingSystem.current().isCaseSensitiveFileSystem()) {
+            if (!FileSystems.getDefault().isCaseSensitive()) {
                 rootPath = rootPath.toLowerCase();
                 normalisedStr = normalisedStr.toLowerCase();
             }
@@ -161,7 +239,7 @@ public abstract class AbstractFileResolver implements FileResolver {
                     throw new RuntimeException(e);
                 }
             } else if (current instanceof FileSource) {
-                return ((FileSource)current).get();
+                return ((FileSource) current).get();
             } else {
                 return current;
             }
@@ -206,5 +284,12 @@ public abstract class AbstractFileResolver implements FileResolver {
 
     public FileTree resolveFilesAsTree(Object... paths) {
         return resolveFiles(paths).getAsFileTree();
+    }
+
+    public ReadableResource resolveResource(Object path) {
+        if (path instanceof ReadableResource) {
+            return (ReadableResource) path;
+        }
+        return new FileResource(resolve(path));
     }
 }

@@ -15,42 +15,28 @@
  */
 package org.gradle.integtests
 
+import org.apache.tools.ant.taskdefs.Chmod
 import org.gradle.integtests.fixtures.ExecutionFailure
 import org.gradle.integtests.fixtures.GradleDistribution
 import org.gradle.integtests.fixtures.GradleDistributionExecuter
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.util.Jvm
-import org.gradle.util.OperatingSystem
+import org.gradle.os.FileSystems
+import org.gradle.os.OperatingSystem
 import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
-import org.gradle.util.AntUtil
-import org.apache.tools.ant.taskdefs.Chmod
-import org.gradle.util.PosixUtil
-import org.gradle.util.TestFile
+import org.gradle.util.*
 
 public class CommandLineIntegrationTest {
     @Rule public final GradleDistribution dist = new GradleDistribution()
-    @Rule public final GradleDistributionExecuter executer = new GradleDistributionExecuter()
+    @Rule public final GradleDistributionExecuter executer = new GradleDistributionExecuter(GradleDistributionExecuter.Executer.forking)
     @Rule public final TestResources resources = new TestResources()
+    @Rule public final PreconditionVerifier verifier = new PreconditionVerifier()
 
     @Test
     public void hasNonZeroExitCodeOnBuildFailure() {
         ExecutionFailure failure = executer.withTasks('unknown').runWithFailure()
         failure.assertHasDescription("Task 'unknown' not found in root project 'commandLine'.")
-    }
-
-    @Test
-    public void canonicalisesWorkingDirectory() {
-        File javaprojectDir;
-        if (OperatingSystem.current().isWindows()) {
-            javaprojectDir = new File(dist.samplesDir, 'java/QUICKS~1')
-        } else if (!OperatingSystem.current().isCaseSensitiveFileSystem()) {
-            javaprojectDir = new File(dist.samplesDir, 'JAVA/QuickStart')
-        } else {
-            javaprojectDir = new File(dist.samplesDir, 'java/multiproject/../quickstart')
-        }
-        executer.inDirectory(javaprojectDir).withTasks('classes').run()
     }
 
     @Test
@@ -91,6 +77,7 @@ public class CommandLineIntegrationTest {
     }
 
     @Test
+    @Requires(TestPrecondition.SYMLINKS)
     public void failsWhenJavaHomeNotSetAndPathDoesNotContainJava() {
         def path
         if (OperatingSystem.current().windows) {
@@ -113,7 +100,7 @@ public class CommandLineIntegrationTest {
             binary = new File("/bin/$command")
         }
         assert binary.exists()
-        PosixUtil.current().symlink(binary.absolutePath, binDir.file(command).absolutePath)
+        FileSystems.default.createSymbolicLink(binDir.file(command), binary.absoluteFile)
     }
 
     @Test
@@ -182,14 +169,11 @@ public class CommandLineIntegrationTest {
     }
 
     @Test
+    @Requires(TestPrecondition.SYMLINKS)
     public void resolvesLinksWhenDeterminingHomeDirectory() {
-        if (OperatingSystem.current().isWindows()) {
-            return
-        }
-
         def script = dist.testFile('bin/my app')
         script.parentFile.createDir()
-        PosixUtil.current().symlink(dist.gradleHomeDir.file('bin/gradle').absolutePath, script.absolutePath)
+        FileSystems.default.createSymbolicLink(script, dist.gradleHomeDir.file('bin/gradle'))
 
         def result = executer.usingExecutable(script.absolutePath).withTasks("help").run()
         assert result.output.contains("my app")

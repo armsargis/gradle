@@ -53,7 +53,7 @@ class ServiceLocatorTest extends Specification {
         then:
         RuntimeException e = thrown()
         e.message == "Could not load implementation class 'org.gradle.ImplClass' for service 'java.lang.String'."
-        e.cause.cause == failure
+        e.cause == failure
         1 * classLoader.getResource("META-INF/services/java.lang.String") >> serviceFile
         1 * classLoader.loadClass('org.gradle.ImplClass') >> { throw failure }
     }
@@ -122,13 +122,13 @@ class ServiceLocatorTest extends Specification {
         obj1.is(obj2)
     }
 
-    def "get() fails when no implementation class is specified"() {
+    def "get() fails when no meta-data file found for service type"() {
         when:
         serviceLocator.get(CharSequence)
 
         then:
         UnknownServiceException e = thrown()
-        e.message == "No implementation class specified for service 'java.lang.CharSequence'."
+        e.message == "Could not find meta-data resource 'META-INF/services/java.lang.CharSequence' for service 'java.lang.CharSequence'."
     }
 
     def "getFactory() returns a factory which creates instances of implementation class"() {
@@ -146,13 +146,13 @@ class ServiceLocatorTest extends Specification {
         !obj1.is(obj2)
     }
 
-    def "getFactory() fails when no implementation class is specified"() {
+    def "getFactory() fails when no meta-data file found for service type"() {
         when:
         serviceLocator.getFactory(CharSequence)
 
         then:
         UnknownServiceException e = thrown()
-        e.message == "No implementation class specified for service 'java.lang.CharSequence'."
+        e.message == "Could not find meta-data resource 'META-INF/services/java.lang.CharSequence' for service 'java.lang.CharSequence'."
     }
 
     def stream(String contents) {

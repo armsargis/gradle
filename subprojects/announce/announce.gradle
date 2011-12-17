@@ -14,11 +14,15 @@
  * limitations under the License.
  */
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
     compile libraries.slf4j_api
     compile project(':core')
     compile project(':plugins')
+}
+
+if (!Jvm.current().java6Compatible) {
+    sourceSets.main.groovy.exclude '**/AppleScriptBackedGrowlAnnouncer.*'
 }
 
 useTestFixtures()

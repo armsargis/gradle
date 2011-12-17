@@ -44,6 +44,7 @@ import org.gradle.api.logging.LoggingManager;
 import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.plugins.PluginContainer;
+import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.Directory;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.configuration.ProjectEvaluator;
@@ -368,7 +369,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public void setBuildDirName(String buildDirName) {
-        DeprecationLogger.nagUser("Project.setBuildDirName()", "setBuildDir()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.setBuildDirName()", "setBuildDir()");
         this.buildDir = buildDirName;
     }
 
@@ -402,7 +403,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public String absolutePath(String path) {
-        DeprecationLogger.nagUser("Project.absolutePath()", "Project.absoluteProjectPath()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.absolutePath()", "Project.absoluteProjectPath()");
         return absoluteProjectPath(path);
     }
 
@@ -544,11 +545,11 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     private void warnCreateTaskDeprecated() {
-        DeprecationLogger.nagUser("Project.createTask()", "task()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.createTask()", "task()");
     }
 
     private void warnUsePluginDeprecated() {
-        DeprecationLogger.nagUser("Project.usePlugin()", "apply()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.usePlugin()", "apply()");
     }
 
     public void addChildProject(ProjectInternal childProject) {
@@ -695,6 +696,10 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return fileOperations.tarTree(tarPath);
     }
 
+    public ResourceHandler getResources() {
+        return fileOperations.getResources();
+    }
+
     public String relativePath(Object path) {
         return fileOperations.relativePath(path);
     }
@@ -778,12 +783,12 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public void disableStandardOutputCapture() {
-        DeprecationLogger.nagUser("Project.disableStandardOutputCapture()");
+        DeprecationLogger.nagUserOfDiscontinuedMethod("Project.disableStandardOutputCapture()");
         loggingManager.disableStandardOutputCapture();
     }
 
     public void captureStandardOutput(LogLevel level) {
-        DeprecationLogger.nagUser("Project.captureStandardOutput()", "getLogging().captureStandardOutput()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.captureStandardOutput()", "getLogging().captureStandardOutput()");
         loggingManager.captureStandardOutput(level);
     }
 

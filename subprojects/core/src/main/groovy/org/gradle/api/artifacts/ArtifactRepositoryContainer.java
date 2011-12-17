@@ -19,11 +19,9 @@ import groovy.lang.Closure;
 import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.NamedDomainObjectList;
-import org.gradle.api.artifacts.dsl.ArtifactRepository;
-import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
+import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.util.Configurable;
 
-import java.io.File;
 import java.util.List;
 
 /**
@@ -120,7 +118,7 @@ public interface ArtifactRepositoryContainer extends NamedDomainObjectList<Artif
      * @param userDescription The resolver definition.
      * @return The added resolver.
      * @throws InvalidUserDataException when a resolver with the given name already exists in this container.
-     * @deprecated Use {@link org.gradle.api.artifacts.dsl.RepositoryHandler#maven(groovy.lang.Closure)} or {@link #add(org.gradle.api.artifacts.dsl.ArtifactRepository)} instead.
+     * @deprecated Use {@link org.gradle.api.artifacts.dsl.RepositoryHandler#maven(groovy.lang.Closure)} or {@link #add(ArtifactRepository)} instead.
      */
     @Deprecated
     DependencyResolver addLast(Object userDescription) throws InvalidUserDataException;
@@ -133,7 +131,7 @@ public interface ArtifactRepositoryContainer extends NamedDomainObjectList<Artif
      * @param configureClosure The closure to use to configure the resolver.
      * @return The added resolver.
      * @throws InvalidUserDataException when a resolver with the given name already exists in this container.
-     * @deprecated Use {@link org.gradle.api.artifacts.dsl.RepositoryHandler#maven(groovy.lang.Closure)} or {@link #add(org.gradle.api.artifacts.dsl.ArtifactRepository)} instead.
+     * @deprecated Use {@link org.gradle.api.artifacts.dsl.RepositoryHandler#maven(groovy.lang.Closure)} or {@link #add(ArtifactRepository)} instead.
      */
     @Deprecated
     DependencyResolver addLast(Object userDescription, Closure configureClosure) throws InvalidUserDataException;
@@ -229,10 +227,4 @@ public interface ArtifactRepositoryContainer extends NamedDomainObjectList<Artif
      * @return The resolvers in sequence. Returns an empty list if this container is empty.
      */
     List<DependencyResolver> getResolvers();
-
-    void setMavenPomDir(File mavenPomDir);
-
-    Conf2ScopeMappingContainer getMavenScopeMappings();
-
-    File getMavenPomDir();
 }

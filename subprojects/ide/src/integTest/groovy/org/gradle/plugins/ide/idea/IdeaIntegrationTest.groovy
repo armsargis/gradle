@@ -22,6 +22,7 @@ import org.custommonkey.xmlunit.Diff
 import org.custommonkey.xmlunit.ElementNameAndAttributeQualifier
 import org.custommonkey.xmlunit.XMLAssert
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.os.OperatingSystem
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
 import org.gradle.util.TestFile
 import org.junit.Rule
@@ -105,15 +106,15 @@ apply plugin: 'idea'
     @Test
     void canHandleCircularModuleDependencies() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2", "myArtifact1")
+        def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish().artifactFile
+        def artifact2 = maven(repoDir).module("myGroup", "myArtifact2").dependsOn("myArtifact1").publish().artifactFile
 
         runIdeaTask """
 apply plugin: "java"
 apply plugin: "idea"
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -173,15 +174,15 @@ tasks.idea << {
     @Test
     void respectsPerConfigurationExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish()
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runIdeaTask """
 apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 configurations {
@@ -201,15 +202,15 @@ dependencies {
     @Test
     void respectsPerDependencyExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish()
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runIdeaTask """
 apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -311,14 +312,19 @@ apply plugin: "idea"
         def expectedXml = expectedFile.text
 
         def homeDir = distribution.userHomeDir.absolutePath.replace(File.separator, '/')
-        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts/(.+?/.+?)/[a-z0-9]+/")
-        def actualXml = file.text.replaceAll(pattern, "@CACHE_DIR@/\$1/@REPO@/")
+        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts-\\d+/artifacts/[a-z0-9]+/")
+        def actualXml = file.text.replaceAll(pattern, "@CACHE_DIR@/@REPO@/")
 
         Diff diff = new Diff(expectedXml, actualXml)
         diff.overrideElementQualifier(new ElementNameAndAttributeQualifier())
         try {
             XMLAssert.assertXMLEqual(diff, true)
         } catch (AssertionFailedError e) {
+            if (OperatingSystem.current().unix) {
+                def process = ["diff", expectedFile.absolutePath, file.absolutePath].execute()
+                process.consumeProcessOutput(System.out, System.err)
+                process.waitFor()
+            }
             throw new AssertionFailedError("generated file '$path' does not contain the expected contents: ${e.message}.\nExpected:\n${expectedXml}\nActual:\n${actualXml}").initCause(e)
         }
     }

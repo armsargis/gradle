@@ -16,7 +16,9 @@
 package org.gradle.launcher;
 
 import org.gradle.api.internal.ClassPathRegistry;
+import org.gradle.api.internal.DefaultClassPathProvider;
 import org.gradle.api.internal.DefaultClassPathRegistry;
+import org.gradle.api.internal.classpath.DefaultModuleRegistry;
 import org.gradle.util.ClassLoaderFactory;
 import org.gradle.util.DefaultClassLoaderFactory;
 
@@ -37,14 +39,14 @@ public class ProcessBootstrap {
     }
 
     private void runNoExit(String mainClassName, String[] args) throws Exception {
-        ClassPathRegistry classPathRegistry = new DefaultClassPathRegistry();
+        ClassPathRegistry classPathRegistry = new DefaultClassPathRegistry(new DefaultClassPathProvider(new DefaultModuleRegistry()));
         ClassLoaderFactory classLoaderFactory = new DefaultClassLoaderFactory();
         Set<URL> antClasspath = classPathRegistry.getClassPath("ANT");
         URL[] runtimeClasspath = classPathRegistry.getClassPathUrls("GRADLE_RUNTIME");
         ClassLoader antClassLoader = classLoaderFactory.createIsolatedClassLoader(antClasspath);
         ClassLoader runtimeClassLoader = new URLClassLoader(runtimeClasspath, antClassLoader);
         Thread.currentThread().setContextClassLoader(runtimeClassLoader);
-        Class mainClass = runtimeClassLoader.loadClass(mainClassName);
+        Class<?> mainClass = runtimeClassLoader.loadClass(mainClassName);
         Method mainMethod = mainClass.getMethod("main", String[].class);
         mainMethod.invoke(null, new Object[]{args});
     }

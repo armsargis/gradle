@@ -15,16 +15,10 @@
  */
 package org.gradle.api.internal.artifacts;
 
-import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.artifacts.dsl.ArtifactRepository;
-import org.gradle.api.artifacts.dsl.FlatDirectoryArtifactRepository;
-import org.gradle.api.artifacts.dsl.IvyArtifactRepository;
-import org.gradle.api.artifacts.dsl.MavenArtifactRepository;
-import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
-import org.gradle.api.artifacts.maven.GroovyMavenDeployer;
-import org.gradle.api.artifacts.maven.MavenResolver;
-import org.gradle.api.internal.artifacts.publish.maven.MavenPomMetaInfoProvider;
-import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.artifacts.repositories.ArtifactRepository;
+import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
+import org.gradle.api.artifacts.repositories.IvyArtifactRepository;
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 
 /**
  * @author Hans Dockter
@@ -37,12 +31,6 @@ public interface ResolverFactory {
     MavenArtifactRepository createMavenLocalRepository();
 
     MavenArtifactRepository createMavenCentralRepository();
-
-    GroovyMavenDeployer createMavenDeployer(MavenPomMetaInfoProvider pomMetaInfoProvider, ConfigurationContainer configurationContainer,
-                                            Conf2ScopeMappingContainer scopeMapping, FileResolver fileResolver);
-
-    MavenResolver createMavenInstaller(MavenPomMetaInfoProvider pomMetaInfoProvider, ConfigurationContainer configurationContainer,
-                                       Conf2ScopeMappingContainer scopeMapping, FileResolver fileResolver);
 
     IvyArtifactRepository createIvyRepository();
 

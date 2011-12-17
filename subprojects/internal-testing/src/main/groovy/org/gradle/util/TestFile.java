@@ -20,13 +20,17 @@ import groovy.lang.Closure;
 import org.apache.commons.io.FileUtils;
 import org.apache.tools.ant.taskdefs.Tar;
 import org.apache.tools.ant.taskdefs.Zip;
+import org.apache.tools.ant.types.EnumeratedAttribute;
+import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.DeleteAction;
 import org.gradle.api.internal.file.IdentityFileResolver;
 import org.gradle.api.internal.file.copy.DeleteActionImpl;
+import org.gradle.os.FileSystems;
+import org.gradle.os.OperatingSystem;
+import org.gradle.process.ExecResult;
 import org.gradle.process.internal.DefaultExecAction;
 import org.gradle.process.internal.ExecAction;
-import org.gradle.process.ExecResult;
 import org.hamcrest.Matcher;
 
 import java.io.*;
@@ -36,8 +40,6 @@ import java.net.URL;
 import java.util.*;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
-
-import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 
 import static org.junit.Assert.*;
 
@@ -67,6 +69,10 @@ public class TestFile extends File implements TestFileContext {
     public TestFile usingNativeTools() {
         useNativeTools = true;
         return this;
+    }
+
+    Object writeReplace() throws ObjectStreamException {
+        return new File(getAbsolutePath());
     }
 
     private static URI toUri(URL url) {
@@ -226,14 +232,30 @@ public class TestFile extends File implements TestFileContext {
             throw new UncheckedIOException(e);
         }
     }
+    
+    public void moveToDirectory(File target) {
+        if (target.exists() && !target.isDirectory()) {
+                throw new UncheckedIOException(String.format("Target '%s' is not a directory", target));
+        }
+        try {
+            FileUtils.moveFileToDirectory(this, target, true);
+        } catch (IOException e) {
+            throw new UncheckedIOException(String.format("Could not move test file '%s' to directory '%s'", this, target), e);
+        }
+    }
 
     public TestFile linkTo(File target) {
         getParentFile().createDir();
-        int retval = PosixUtil.current().symlink(target.getAbsolutePath(), getAbsolutePath());
-        if (retval != 0) {
-            throw new UncheckedIOException(String.format("Could not create link from '%s' to '%s'", target, this));
+        try {
+            FileSystems.getDefault().createSymbolicLink(getAbsoluteFile(), target);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
         return this;
+    }
+
+    public TestFile linkTo(String target) {
+        return linkTo(new File(target));
     }
 
     public TestFile touch() {
@@ -346,7 +368,7 @@ public class TestFile extends File implements TestFileContext {
         Set<String> missing = new TreeSet<String>(expected);
         missing.removeAll(actual);
 
-        assertEquals(String.format("Extra files: %s, missing files: %s, expected: %s", extras, missing, expected), expected, actual);
+        assertEquals(String.format("For dir: %s, extra files: %s, missing files: %s, expected: %s", this, extras, missing, expected), expected, actual);
 
         return this;
     }
@@ -418,6 +440,17 @@ public class TestFile extends File implements TestFileContext {
         return file(path).createFile();
     }
 
+    public TestFile createZip(Object path) {
+        Zip zip = new Zip();
+        zip.setWhenempty((Zip.WhenEmpty) Zip.WhenEmpty.getInstance(Zip.WhenEmpty.class, "create"));
+        TestFile zipFile = file(path);
+        zip.setDestFile(zipFile);
+        zip.setBasedir(this);
+        zip.setExcludes("**");
+        AntUtil.execute(zip);
+        return zipFile;
+    }
+
     public TestFile zipTo(TestFile zipFile) {
         Zip zip = new Zip();
         zip.setBasedir(this);
@@ -434,6 +467,24 @@ public class TestFile extends File implements TestFileContext {
         return this;
     }
 
+    public TestFile tgzTo(TestFile tarFile) {
+        Tar tar = new Tar();
+        tar.setBasedir(this);
+        tar.setDestFile(tarFile);
+        tar.setCompression((Tar.TarCompressionMethod) EnumeratedAttribute.getInstance(Tar.TarCompressionMethod.class, "gzip"));
+        AntUtil.execute(tar);
+        return this;
+    }
+
+    public TestFile tbzTo(TestFile tarFile) {
+        Tar tar = new Tar();
+        tar.setBasedir(this);
+        tar.setDestFile(tarFile);
+        tar.setCompression((Tar.TarCompressionMethod) EnumeratedAttribute.getInstance(Tar.TarCompressionMethod.class, "bzip2"));
+        AntUtil.execute(tar);
+        return this;
+    }
+
     public Snapshot snapshot() {
         assertIsFile();
         return new Snapshot();
@@ -442,6 +493,11 @@ public class TestFile extends File implements TestFileContext {
     public void assertHasChangedSince(Snapshot snapshot) {
         Snapshot now = snapshot();
         assertTrue(now.modTime != snapshot.modTime || !Arrays.equals(now.hash, snapshot.hash));
+    }
+
+    public void assertContentsHaveNotChangedSince(Snapshot snapshot) {
+        Snapshot now = snapshot();
+        assertArrayEquals(String.format("contents of %s has changed", this), snapshot.hash, now.hash);
     }
 
     public void assertHasNotChangedSince(Snapshot snapshot) {

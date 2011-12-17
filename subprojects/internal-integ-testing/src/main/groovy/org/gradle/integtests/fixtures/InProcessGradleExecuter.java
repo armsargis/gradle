@@ -32,109 +32,23 @@ import org.gradle.api.tasks.TaskState;
 import org.gradle.cli.CommandLineParser;
 import org.gradle.initialization.DefaultCommandLineConverter;
 import org.gradle.initialization.DefaultGradleLauncherFactory;
+import org.gradle.launcher.daemon.registry.DaemonRegistry;
+import org.gradle.os.ProcessEnvironment;
+import org.gradle.os.jna.NativeEnvironment;
+import org.gradle.util.Jvm;
 import org.hamcrest.Matcher;
 
 import java.io.File;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.util.*;
 
 import static org.gradle.util.Matchers.*;
-import static org.gradle.util.WrapUtil.*;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
 public class InProcessGradleExecuter extends AbstractGradleExecuter {
-    private StartParameter parameter;
-
-    public InProcessGradleExecuter(StartParameter parameter) {
-        this.parameter = parameter;
-    }
-
-    @Override
-    public GradleExecuter reset() {
-        super.reset();
-        parameter = new StartParameter();
-        return this;
-    }
-
-    public StartParameter getParameter() {
-        return parameter;
-    }
-
-    @Override
-    public GradleExecuter inDirectory(File directory) {
-        parameter.setCurrentDir(directory);
-        return this;
-    }
-
-    @Override
-    public InProcessGradleExecuter withSearchUpwards() {
-        parameter.setSearchUpwards(true);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter withTasks(List<String> names) {
-        parameter.setTaskNames(names);
-        return this;
-    }
-
-    @Override
-    public InProcessGradleExecuter withTaskList() {
-        parameter.setTaskNames(toList("tasks"));
-        return this;
-    }
-
-    @Override
-    public InProcessGradleExecuter withDependencyList() {
-        parameter.setTaskNames(toList("dependencies"));
-        return this;
-    }
-
-    @Override
-    public InProcessGradleExecuter usingSettingsFile(File settingsFile) {
-        parameter.setSettingsFile(settingsFile);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter usingInitScript(File initScript) {
-        parameter.addInitScript(initScript);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter usingProjectDirectory(File projectDir) {
-        parameter.setProjectDir(projectDir);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter usingBuildScript(File buildScript) {
-        parameter.setBuildFile(buildScript);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter usingBuildScript(String scriptText) {
-        parameter.useEmbeddedBuildFile(scriptText);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter withArguments(List<String> args) {
-        CommandLineParser parser = new CommandLineParser();
-        DefaultCommandLineConverter converter = new DefaultCommandLineConverter();
-        converter.configure(parser);
-        converter.convert(parser.parse(args), parameter);
-        return this;
-    }
-
-    @Override
-    public GradleExecuter withUserHomeDir(File userHomeDir) {
-        parameter.setGradleUserHomeDir(userHomeDir);
-        return this;
-    }
+    private final ProcessEnvironment processEnvironment = NativeEnvironment.current();
 
     @Override
     protected ExecutionResult doRun() {
@@ -164,9 +78,30 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
     private BuildResult doRun(final OutputListenerImpl outputListener, OutputListenerImpl errorListener,
                               BuildListenerImpl listener) {
         assertCanExecute();
-        if (isQuiet()) {
-            parameter.setLogLevel(LogLevel.QUIET);
+
+        InputStream originalStdIn = System.in;
+        System.setIn(getStdin());
+        
+        File userDir = new File(System.getProperty("user.dir"));
+        StartParameter parameter = new StartParameter();
+        parameter.setLogLevel(LogLevel.INFO);
+        parameter.setSearchUpwards(true);
+        parameter.setCurrentDir(getWorkingDir());
+
+        CommandLineParser parser = new CommandLineParser();
+        DefaultCommandLineConverter converter = new DefaultCommandLineConverter();
+        converter.configure(parser);
+        converter.convert(parser.parse(getAllArgs()), parameter);
+
+        Properties originalSysProperties = new Properties();
+        originalSysProperties.putAll(System.getProperties());
+        processEnvironment.maybeSetProcessDir(getWorkingDir());
+        Map<String, String> previousEnv = new HashMap<String, String>();
+        for (Map.Entry<String, String> entry : getEnvironmentVars().entrySet()) {
+            previousEnv.put(entry.getKey(), System.getenv(entry.getKey()));
+            processEnvironment.maybeSetEnvironmentVariable(entry.getKey(), entry.getValue());
         }
+
         DefaultGradleLauncherFactory factory = (DefaultGradleLauncherFactory) GradleLauncher.getFactory();
         factory.addListener(listener);
         GradleLauncher gradleLauncher = GradleLauncher.newInstance(parameter);
@@ -175,14 +110,28 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
         try {
             return gradleLauncher.run();
         } finally {
-            System.clearProperty("test.single");
+            System.setProperties(originalSysProperties);
+            processEnvironment.maybeSetProcessDir(userDir);
+            for (Map.Entry<String, String> entry : previousEnv.entrySet()) {
+                String oldValue = entry.getValue();
+                if (oldValue != null) {
+                    processEnvironment.maybeSetEnvironmentVariable(entry.getKey(), oldValue);
+                } else {
+                    processEnvironment.maybeRemoveEnvironmentVariable(entry.getKey());
+                }
+            }
             factory.removeListener(listener);
+            System.setIn(originalStdIn);
         }
+    }
+
+    public DaemonRegistry getDaemonRegistry() {
+        throw new UnsupportedOperationException();
     }
 
     public void assertCanExecute() {
         assertNull(getExecutable());
-        assertTrue(getEnvironmentVars().isEmpty());
+        assertEquals(getJavaHome(), Jvm.current().getJavaHome());
     }
 
     public boolean canExecute() {
@@ -261,7 +210,7 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
         }
     }
 
-    public static class InProcessExecutionResult extends AbstractExecutionResult {
+    public static class InProcessExecutionResult implements ExecutionResult {
         private final List<String> plannedTasks;
         private final Set<String> skippedTasks;
         private final String output;
@@ -284,9 +233,9 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
         }
 
         public List<String> getExecutedTasks() {
-            return new ArrayList(plannedTasks);
+            return new ArrayList<String>(plannedTasks);
         }
-        
+
         public ExecutionResult assertTasksExecuted(String... taskPaths) {
             List<String> expected = Arrays.asList(taskPaths);
             assertThat(plannedTasks, equalTo(expected));
@@ -294,9 +243,9 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
         }
 
         public Set<String> getSkippedTasks() {
-            return new HashSet(skippedTasks);
+            return new HashSet<String>(skippedTasks);
         }
-        
+
         public ExecutionResult assertTasksSkipped(String... taskPaths) {
             Set<String> expected = new HashSet<String>(Arrays.asList(taskPaths));
             assertThat(skippedTasks, equalTo(expected));

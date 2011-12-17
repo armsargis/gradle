@@ -19,13 +19,12 @@ package org.gradle.api.internal.project;
 import org.gradle.StartParameter;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Module;
-import org.gradle.api.artifacts.maven.MavenFactory;
 import org.gradle.api.internal.*;
 import org.gradle.api.internal.artifacts.DefaultModule;
 import org.gradle.api.internal.artifacts.DependencyManagementServices;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
-import org.gradle.api.internal.artifacts.dsl.DefaultPublishArtifactFactory;
-import org.gradle.api.internal.artifacts.dsl.PublishArtifactFactory;
+import org.gradle.api.internal.classpath.ModuleRegistry;
+import org.gradle.api.internal.classpath.PluginModuleRegistry;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.IdentityFileResolver;
 import org.gradle.api.internal.initialization.DefaultScriptHandlerFactory;
@@ -37,7 +36,6 @@ import org.gradle.api.internal.project.taskfactory.TaskFactory;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.internal.CacheFactory;
 import org.gradle.cache.internal.DefaultCacheRepository;
-import org.gradle.cache.internal.LazyOpenCacheFactory;
 import org.gradle.configuration.*;
 import org.gradle.groovy.scripts.DefaultScriptCompilerFactory;
 import org.gradle.groovy.scripts.ScriptCompilerFactory;
@@ -69,10 +67,6 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
         add(StartParameter.class, startParameter);
     }
 
-    protected PublishArtifactFactory createPublishArtifactFactory() {
-        return new DefaultPublishArtifactFactory();
-    }
-
     protected ImportsReader createImportsReader() {
         return new ImportsReader();
     }
@@ -97,8 +91,9 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
 
     protected ClassPathRegistry createClassPathRegistry() {
         return new DefaultClassPathRegistry(
-                new DependencyClassPathProvider(get(ClassLoaderRegistry.class)),
-                new WorkerProcessClassPathProvider(get(CacheRepository.class)));
+                new DefaultClassPathProvider(get(ModuleRegistry.class)),
+                new DependencyClassPathProvider(get(ModuleRegistry.class), get(PluginModuleRegistry.class)),
+                new WorkerProcessClassPathProvider(get(CacheRepository.class), get(ModuleRegistry.class)));
     }
 
     protected IsolatedAntBuilder createIsolatedAntBuilder() {
@@ -124,7 +119,7 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     }
 
     protected CacheRepository createCacheRepository() {
-        CacheFactory factory = new LazyOpenCacheFactory(get(CacheFactory.class));
+        CacheFactory factory = get(CacheFactory.class);
         return new DefaultCacheRepository(startParameter.getGradleUserHomeDir(), startParameter.getProjectCacheDir(),
                 startParameter.getCacheUsage(), factory);
     }
@@ -171,8 +166,11 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     
     protected InitScriptHandler createInitScriptHandler() {
         return new InitScriptHandler(
-                new UserHomeInitScriptFinder(
-                        new DefaultInitScriptFinder()),
+                new CompositeInitScriptFinder(
+                        new ProvidedInitScriptFinder(),
+                        new UserHomeInitScriptFinder(),
+                        new DistributionInitScriptFinder(
+                                get(GradleDistributionLocator.class))),
                 new DefaultInitScriptProcessor(
                         get(ScriptPluginFactory.class)));
 
@@ -214,10 +212,6 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
                 new ProjectEvaluationConfigurer(),
                 new ProjectDependencies2TaskResolver(),
                 new ImplicitTasksConfigurer());
-    }
-
-    protected MavenFactory createMavenFactory() {
-        return get(DependencyManagementServices.class).get(MavenFactory.class);
     }
 
     protected DependencyManagementServices createDependencyManagementServices() {
