@@ -16,7 +16,7 @@
 package org.gradle.integtests.resolve.artifactreuse
 
 import org.gradle.integtests.fixtures.HttpServer
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.util.TestFile
 import org.junit.Rule
 
@@ -49,7 +49,9 @@ task retrieve(type: Sync) {
 """
 
         when:
+        server.expectHead('/gradletest/maven/local/cache/test/foo/1.0/foo-1.0.pom', repoFile.file('gradletest/maven/local/cache/test/foo/1.0/foo-1.0.pom'))
         server.expectGet('/gradletest/maven/local/cache/test/foo/1.0/foo-1.0.pom.sha1', repoFile.file('gradletest/maven/local/cache/test/foo/1.0/foo-1.0.pom.sha1'))
+        server.expectHead('/gradletest/maven/local/cache/test/foo/1.0/foo-1.0.jar', repoFile.file('gradletest/maven/local/cache/test/foo/1.0/foo-1.0.jar'))
         server.expectGet('/gradletest/maven/local/cache/test/foo/1.0/foo-1.0.jar.sha1', repoFile.file('gradletest/maven/local/cache/test/foo/1.0/foo-1.0.jar.sha1'))
 
         then:

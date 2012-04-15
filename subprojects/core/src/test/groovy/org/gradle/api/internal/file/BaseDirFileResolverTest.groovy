@@ -20,6 +20,7 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.PathValidation
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection
+import org.gradle.internal.nativeplatform.filesystem.FileSystems
 import org.gradle.util.PreconditionVerifier
 import org.gradle.util.Requires
 import org.gradle.util.TemporaryFolder
@@ -46,7 +47,7 @@ class BaseDirFileResolverTest {
 
     @Before public void setUp() {
         baseDir = rootDir.dir
-        baseDirConverter = new BaseDirFileResolver(baseDir)
+        baseDirConverter = new BaseDirFileResolver(FileSystems.default, baseDir)
         testFile = new File(baseDir, 'testfile')
         testDir = new File(baseDir, 'testdir')
     }

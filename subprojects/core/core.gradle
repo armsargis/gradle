@@ -24,33 +24,28 @@ dependencies {
     groovy libraries.groovy
 
     publishCompile libraries.slf4j_api
+    publishCompile project(":baseServices")
 
     compile libraries.asm
     compile libraries.ant
     compile libraries.commons_collections
     compile libraries.commons_io
     compile libraries.commons_lang
-    compile libraries.commons_httpclient
     compile libraries.ivy
     compile libraries.logback_core
     compile libraries.logback_classic
     compile libraries.guava
     compile libraries.jcip
     compile libraries.jul_to_slf4j
-    compile "slide:webdavlib:2.0@jar"
-    compile module('org.fusesource.jansi:jansi:1.2.1') {
-        dependency libraries.jna
-    }
-    compile libraries.commons_httpclient
 
     compile project(":cli")
     compile project(":native")
 
     runtime libraries.log4j_to_slf4j
     runtime libraries.jcl_to_slf4j
-    runtime module("com.jcraft:jsch:0.1.42") {
-        dependency "com.jcraft:jzlib:1.0.7"
-    }
+
+    testCompile libraries.log4j_to_slf4j
+    testCompile libraries.jcl_to_slf4j
 
     testRuntime "xerces:xercesImpl:2.9.1"
 
@@ -71,16 +66,16 @@ test {
 task releasesResource(type: GenerateReleasesXml) {
     destFile = new File(generatedResourcesDir, "org/gradle/releases.xml")
 }
-sourceSets.main.output.dir generatedResourcesDir, buildBy: releasesResource
+sourceSets.main.output.dir generatedResourcesDir, builtBy: releasesResource
 
 task reportResources(type: Copy) {
     from configurations.reports
     into "$generatedResourcesDir/org/gradle/reporting"
 }
-sourceSets.main.output.dir generatedResourcesDir, buildBy: reportResources
+sourceSets.main.output.dir generatedResourcesDir, builtBy: reportResources
 
 task pluginsManifest(type: PluginsManifest)
-sourceSets.main.output.dir generatedResourcesDir, buildBy: pluginsManifest
+sourceSets.main.output.dir generatedResourcesDir, builtBy: pluginsManifest
 
 class PluginsManifest extends DefaultTask {
     @OutputFile

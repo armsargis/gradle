@@ -22,6 +22,7 @@ import org.gradle.process.internal.WorkerProcessBuilder;
 import org.gradle.util.GFileUtils;
 
 import java.io.File;
+import java.net.URI;
 import java.net.URL;
 import java.util.Collection;
 import java.util.List;
@@ -32,19 +33,19 @@ import java.util.concurrent.Callable;
  *
  * <p>Class loader hierarchy:</p>
  * <pre>
- *                              bootstrap
- *                                 |
- *                   +-------------+------------+
- *                   |                          |
- *                 system                   application
- *  (ImplementationClassLoaderWorker, logging)           |
- *                   |                          |
- *                filter                     filter
- *              (logging)               (shared packages)
- *                   |                         |
- *                   +-------------+-----------+
- *                                 |
- *                          implementation
+ *                              jvm bootstrap
+ *                                   |
+ *                   +---------------+----------------+
+ *                   |                                |
+ *               jvm system                       application
+ *  (ImplementationClassLoaderWorker, logging)        |
+ *                   |                                |
+ *                filter                           filter
+ *              (logging)                     (shared packages)
+ *                   |                                |
+ *                   +--------------+-----------------+
+ *                                  |
+ *                            implementation
  *                (ActionExecutionWorker + action implementation)
  * </pre>
  *
@@ -69,11 +70,11 @@ public class ApplicationClassesInIsolatedClassLoaderWorkerFactory implements Wor
     }
 
     public Collection<File> getSystemClasspath() {
-        return classPathRegistry.getClassPathFiles("WORKER_PROCESS");
+        return classPathRegistry.getClassPath("WORKER_PROCESS").getAsFiles();
     }
 
     public Callable<?> create() {
-        List<URL> applicationClassPath = GFileUtils.toURLs(processBuilder.getApplicationClasspath());
+        List<URI> applicationClassPath = GFileUtils.toURIs(processBuilder.getApplicationClasspath());
         ActionExecutionWorker injectedWorker = new ActionExecutionWorker(processBuilder.getWorker(), workerId,
                 displayName, serverAddress);
         ImplementationClassLoaderWorker worker = new ImplementationClassLoaderWorker(processBuilder.getLogLevel(),

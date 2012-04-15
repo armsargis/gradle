@@ -22,7 +22,7 @@ import org.custommonkey.xmlunit.Diff
 import org.custommonkey.xmlunit.ElementNameAndAttributeQualifier
 import org.custommonkey.xmlunit.XMLAssert
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.os.OperatingSystem
+import org.gradle.internal.os.OperatingSystem
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
 import org.gradle.util.TestFile
 import org.junit.Rule
@@ -127,6 +127,36 @@ dependencies {
         assert libs.size() == 2
         assert libs.CLASSES.root*.@url*.text().collect { new File(it).name } as Set == [artifact1.name + "!", artifact2.name + "!"] as Set
     }
+
+    @Test
+        void libraryReferenceSubstitutesPathVariable() {
+            def repoDir = file("repo")
+            def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").publish().artifactFile
+
+            runIdeaTask """
+    apply plugin: "java"
+    apply plugin: "idea"
+
+    repositories {
+        maven { url "${repoDir.toURI()}" }
+    }
+
+    idea {
+       pathVariables("GRADLE_REPO": file("repo"))
+    }
+
+    dependencies {
+        compile "myGroup:myArtifact1:1.0"
+    }
+            """
+
+            def module = parseImlFile("root")
+            def libs = module.component.orderEntry.library
+            assert libs.size() == 1
+            assert libs.CLASSES.root*.@url*.text().collect { new File(it).name } as Set == [artifact1.name + "!"] as Set
+            assert libs.CLASSES.root*.@url*.text().findAll(){ it.contains("\$GRADLE_REPO\$") }.size() == 1
+            assert libs.CLASSES.root*.@url*.text().collect { it.replace("\$GRADLE_REPO\$", relPath(repoDir))} as Set == ["jar://${relPath(artifact1)}!/"] as Set
+        }
 
     @Test
     void onlyAddsSourceDirsThatExistOnFileSystem() {
@@ -312,8 +342,8 @@ apply plugin: "idea"
         def expectedXml = expectedFile.text
 
         def homeDir = distribution.userHomeDir.absolutePath.replace(File.separator, '/')
-        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts-\\d+/artifacts/[a-z0-9]+/")
-        def actualXml = file.text.replaceAll(pattern, "@CACHE_DIR@/@REPO@/")
+        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts-\\d+/filestore/([^/]+/[^/]+/[^/]+/[^/]+)/[a-z0-9]+/")
+        def actualXml = file.text.replaceAll(pattern, '@CACHE_DIR@/$1/@SHA1@/')
 
         Diff diff = new Diff(expectedXml, actualXml)
         diff.overrideElementQualifier(new ElementNameAndAttributeQualifier())
@@ -331,5 +361,9 @@ apply plugin: "idea"
 
     private containsDir(path, urls) {
         urls.any { it.endsWith(path) }
+    }
+
+    private String relPath(File file){
+        return file.absolutePath.replace(File.separator, "/")
     }
 }

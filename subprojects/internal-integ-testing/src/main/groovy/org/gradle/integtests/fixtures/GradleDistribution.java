@@ -16,7 +16,8 @@
 
 package org.gradle.integtests.fixtures;
 
-import org.gradle.os.OperatingSystem;
+import org.gradle.internal.jvm.Jvm;
+import org.gradle.internal.os.OperatingSystem;
 import org.gradle.util.*;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
@@ -40,6 +41,7 @@ public class GradleDistribution implements MethodRule, TestFileContext, BasicGra
     private TestFile userHome;
     private boolean usingOwnUserHomeDir;
     private boolean usingIsolatedDaemons;
+    private boolean avoidsConfiguringTmpDir;
 
     static {
         USER_HOME_DIR = file("integTest.gradleUserHomeDir", "intTestHomeDir").file("worker-1");
@@ -70,7 +72,11 @@ public class GradleDistribution implements MethodRule, TestFileContext, BasicGra
         return true;
     }
 
-    public boolean daemonSupported() {
+    public boolean isDaemonSupported() {
+        return true;
+    }
+
+    public boolean isDaemonIdleTimeoutConfigurable() {
         return true;
     }
 
@@ -222,4 +228,17 @@ public class GradleDistribution implements MethodRule, TestFileContext, BasicGra
     public TestFile testFile(Object... path) {
         return getTestDir().file(path);
     }
+
+    /**
+     * avoids configuring -Djava.io.tmpdir=xxx property
+     */
+    public GradleDistribution avoidsConfiguringTmpDir() {
+        this.avoidsConfiguringTmpDir = true;
+        return this;
+    }
+
+    public boolean shouldAvoidConfiguringTmpDir() {
+        return avoidsConfiguringTmpDir;
+    }
 }
+

@@ -44,27 +44,29 @@ plugins.withType(org.gradle.plugins.ide.eclipse.EclipsePlugin) { // lazy as plug
     }
 }
 
-integTestTasks = tasks.withType(Test).matching { it.name.toLowerCase().endsWith('integtest') }
+ext.integTestTasks = tasks.withType(Test).matching { it.name.toLowerCase().endsWith('integtest') }
 
 integTestTasks.all {
     dependsOn ':intTestImage', project(":docs").tasks.matching { it.name == "samples" } // lazy as doc not eval'd yet
     testClassesDir = sourceSets.integTest.output.classesDir
     classpath = sourceSets.integTest.runtimeClasspath
     testSrcDirs = []
-    jvmArgs '-XX:+HeapDumpOnOutOfMemoryError'
-    maxParallelForks = guessMaxForks()
+    jvmArgs '-Xmx512m', '-XX:MaxPermSize=256m', '-XX:+HeapDumpOnOutOfMemoryError'
+    maxParallelForks = guessMaxForks(project)
 
     testResultsDir = file("${project.testResultsDir}/$name")
 
-    systemProperties['org.gradle.integtest.versions'] = 'latest'
+    systemProperties['org.gradle.integtest.versions'] = project.hasProperty("testAllVersions") ? 'all' : 'latest'
+    if (project.hasProperty('crossVersionTestsOnly')) {
+        include '**/*CrossVersion*'
+    }
 
     doFirst {
-        testReportDir = file("${project.reportsDir}/$name")
+        testReportDir = file("${project.reporting.baseDir}/$name")
         systemProperties['integTest.gradleHomeDir'] = integTestImageDir.absolutePath
         systemProperties['integTest.gradleUserHomeDir'] = integTestUserDir.absolutePath
         systemProperties['integTest.samplesdir'] = project(":docs").samplesDir.absolutePath
         if (isCIBuild()) {
-            systemProperties['org.gradle.integtest.versions'] = 'all'
             maxParallelForks = 4
         }
     }
@@ -83,13 +85,12 @@ integTestTasks.all {
 
 daemonIntegTest {
     systemProperties['org.gradle.integtest.daemon.registry'] = file("$rootProject.buildDir/daemon").absolutePath
+}
 
-    doLast {
-        if (project.hasProperty("waitForDaemonsToDieMillis")) {
-            println "Property 'waitForDaemonsToDieMillis' passed so I'm waiting $project.waitForDaemonsToDieMillis millis so that deamons can die with honor..."
-            Thread.sleep(Integer.parseInt(project.waitForDaemonsToDieMillis));
-        }
-    }
+task waitForDaemonsToDie << {
+    def mins = 5
+    println "I'm waiting for $mins mins so that existing deamons can die with honor. It's a workaround until we fix it properly."
+    Thread.sleep(mins * 60 * 1000);
 }
 
 task integTest(type: Test) {
@@ -118,10 +119,10 @@ class IntegTestConvention {
         if (!project.tasks.findByName('ciBuild') || !project.gradle.taskGraph.populated) {
             return null
         }
-        if (project.isCIBuild()) {
+        if (project.isCIBuild() || project.isReleaseBuild() ) {
             return 'forking'
         }
-        return 'embedded'
+        return System.getProperty("org.gradle.integtest.executer") ?: 'embedded'
     }
 
     File getIntegTestUserDir() {

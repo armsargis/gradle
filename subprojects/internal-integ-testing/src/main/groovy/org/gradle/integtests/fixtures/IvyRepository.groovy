@@ -15,10 +15,11 @@
  */
 package org.gradle.integtests.fixtures
 
-import org.gradle.util.TestFile
-import junit.framework.AssertionFailedError
 import java.util.regex.Pattern
-import java.security.MessageDigest
+import junit.framework.AssertionFailedError
+
+import org.gradle.util.TestFile
+import org.gradle.util.hash.HashUtil
 
 class IvyRepository {
     final TestFile rootDir
@@ -45,6 +46,7 @@ class IvyModule {
     final List dependencies = []
     final Map<String, Map> configurations = [:]
     final List artifacts = []
+    String status = "integration"
     int publishCount
 
     IvyModule(TestFile moduleDir, String organisation, String module, String revision) {
@@ -77,6 +79,11 @@ class IvyModule {
         return this
     }
 
+    IvyModule withStatus(String status) {
+        this.status = status;
+        return this
+    }
+
     File getIvyFile() {
         return moduleDir.file("ivy-${revision}.xml")
     }
@@ -104,6 +111,7 @@ class IvyModule {
 	<info organisation="${organisation}"
 		module="${module}"
 		revision="${revision}"
+		status="${status}"
 	/>
 	<configurations>"""
         configurations.each { name, config ->
@@ -152,9 +160,7 @@ class IvyModule {
     }
 
     private String getHash(File file, String algorithm) {
-        MessageDigest messageDigest = MessageDigest.getInstance(algorithm)
-        messageDigest.update(file.bytes)
-        return new BigInteger(1, messageDigest.digest()).toString(16)
+        return HashUtil.createHash(file, algorithm).asHexString()
     }
 
     TestFile sha1File(File file) {
@@ -166,6 +172,51 @@ class IvyModule {
     IvyDescriptor getIvy() {
         return new IvyDescriptor(ivyFile)
     }
+
+    public expectIvyHead(HttpServer server, prefix = null) {
+        server.expectHead(ivyPath(prefix), ivyFile)
+    }
+
+    public expectIvyGet(HttpServer server, prefix = null) {
+        server.expectGet(ivyPath(prefix), ivyFile)
+    }
+
+    public ivyPath(prefix = null) {
+        path(prefix, ivyFile.name)
+    }
+
+    public expectIvySha1Get(HttpServer server, prefix = null) {
+        server.expectGet(ivySha1Path(prefix), sha1File(ivyFile))
+    }
+
+    public ivySha1Path(prefix = null) {
+        ivyPath(prefix) + ".sha1"
+    }
+
+    public expectArtifactHead(HttpServer server, prefix = null) {
+        server.expectHead(artifactPath(prefix), jarFile)
+    }
+
+    public expectArtifactGet(HttpServer server, prefix = null) {
+        server.expectGet(artifactPath(prefix), jarFile)
+    }
+
+    public artifactPath(prefix = null) {
+        path(prefix, jarFile.name)
+    }
+
+    public expectArtifactSha1Get(HttpServer server, prefix = null) {
+        server.expectGet(artifactSha1Path(prefix), sha1File(jarFile))
+    }
+
+    public artifactSha1Path(prefix = null) {
+        artifactPath(prefix) + ".sha1"
+    }
+
+    public path(prefix = null, String filename) {
+        "${prefix == null ? "" : prefix}/${organisation}/${module}/${revision}/${filename}"
+    }
+
 }
 
 class IvyDescriptor {

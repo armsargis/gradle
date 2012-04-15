@@ -16,8 +16,8 @@
 
 package org.gradle.messaging.dispatch;
 
+import org.gradle.internal.UncheckedException;
 import org.gradle.messaging.concurrent.AsyncStoppable;
-import org.gradle.util.UncheckedException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -127,7 +127,7 @@ public class AsyncReceive<T> implements AsyncStoppable {
                     try {
                         condition.await();
                     } catch (InterruptedException e) {
-                        throw UncheckedException.asUncheckedException(e);
+                        throw UncheckedException.throwAsUncheckedException(e);
                     }
                 }
                 if (state != State.Init) {

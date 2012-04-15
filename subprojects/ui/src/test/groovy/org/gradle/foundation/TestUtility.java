@@ -26,7 +26,7 @@ import org.gradle.gradleplugin.foundation.GradlePluginLord;
 import org.gradle.gradleplugin.foundation.request.ExecutionRequest;
 import org.gradle.gradleplugin.foundation.request.RefreshTaskListRequest;
 import org.gradle.gradleplugin.foundation.request.Request;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.UncheckedException;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JUnit4Mockery;
 
@@ -368,7 +368,7 @@ public class TestUtility {
         try {
             completed = complete.await(maximumWaitValue, maximumWaitUnits);
         } catch (InterruptedException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
 
         gradlePluginLord.removeRequestObserver(observer);
@@ -426,7 +426,7 @@ public class TestUtility {
         try {
             timeout = !complete.await(maximumWaitSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
 
         gradlePluginLord.removeRequestObserver(observer);

@@ -15,25 +15,15 @@
  */
 package org.gradle.integtests.resolve.maven
 
-import org.gradle.integtests.fixtures.HttpServer
-import org.gradle.integtests.fixtures.MavenRepository
-import org.gradle.integtests.fixtures.TestResources
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
-import org.junit.Rule
+import org.gradle.integtests.resolve.AbstractDependencyResolutionTest
 
-class MavenRemotePomResolutionIntegrationTest extends AbstractIntegrationSpec {
-    @Rule public final HttpServer server = new HttpServer()
-    @Rule public final TestResources resources = new TestResources();
-
-    def "setup"() {
-        requireOwnUserHomeDir()
-    }
+class MavenRemotePomResolutionIntegrationTest extends AbstractDependencyResolutionTest {
 
     def "looks for jar artifact for pom with packing of type 'pom' in the same repository only"() {
         given:
         server.start()
 
-        def projectA = repo().module('group', 'projectA')
+        def projectA = mavenRepo().module('group', 'projectA')
         projectA.type = 'pom'
         projectA.publish()
 
@@ -53,14 +43,11 @@ task retrieve(type: Sync) {
         when:
         // First attempts to resolve in repo1
         server.expectGetMissing('/repo1/group/projectA/1.0/projectA-1.0.pom')
-        server.expectGetMissing('/repo1/group/projectA/1.0/projectA-1.0.jar')
+        server.expectHeadMissing('/repo1/group/projectA/1.0/projectA-1.0.jar')
 
         // Then resolves pom (with 'pom' packaging) in repo2, looks there for jar as well
         server.expectGet('/repo2/group/projectA/1.0/projectA-1.0.pom', projectA.pomFile)
-        server.expectGet('/repo2/group/projectA/1.0/projectA-1.0.jar', projectA.artifactFile)
-
-        // TODO:DAZ The rest of these should be HEAD requests, at most
-        server.expectGet('/repo2/group/projectA/1.0/projectA-1.0.pom', projectA.pomFile)
+        server.expectHead('/repo2/group/projectA/1.0/projectA-1.0.jar', projectA.artifactFile)
         server.expectGet('/repo2/group/projectA/1.0/projectA-1.0.jar', projectA.artifactFile)
 
         and:
@@ -83,15 +70,15 @@ task retrieve(type: Sync) {
         given:
         server.start()
 
-        def parentDep = repo().module("org", "parent_dep").publish()
-        def childDep = repo().module("org", "child_dep").publish()
+        def parentDep = mavenRepo().module("org", "parent_dep").publish()
+        def childDep = mavenRepo().module("org", "child_dep").publish()
 
-        def parent = repo().module("org", "parent")
+        def parent = mavenRepo().module("org", "parent")
         parent.type = 'pom'
         parent.dependsOn("parent_dep")
         parent.publish()
 
-        def child = repo().module("org", "child")
+        def child = mavenRepo().module("org", "child")
         child.dependsOn("child_dep")
         child.parentPomSection = """
 <parent>
@@ -119,7 +106,7 @@ task retrieve(type: Sync) {
         server.expectGet('/repo1/org/parent/1.0/parent-1.0.pom', parent.pomFile)
 
         // Will always check for a default artifact with a module with 'pom' packaging
-        server.expectGetMissing('/repo1/org/parent/1.0/parent-1.0.jar')
+        server.expectHeadMissing('/repo1/org/parent/1.0/parent-1.0.jar')
 
         server.expectGet('/repo1/org/child/1.0/child-1.0.jar', child.artifactFile)
 
@@ -143,11 +130,11 @@ task retrieve(type: Sync) {
         given:
         server.start()
 
-        def parent = repo().module("org", "parent")
+        def parent = mavenRepo().module("org", "parent")
         parent.type = 'pom'
         parent.publish()
 
-        def child = repo().module("org", "child")
+        def child = mavenRepo().module("org", "child")
         child.parentPomSection = """
 <parent>
   <groupId>org</groupId>
@@ -175,9 +162,9 @@ task retrieve(type: Sync) {
         server.expectGet('/repo1/org/child/1.0/child-1.0.jar', child.artifactFile)
 
         server.expectGetMissing('/repo1/org/parent/1.0/parent-1.0.pom')
-        server.expectGetMissing('/repo1/org/parent/1.0/parent-1.0.jar')
+        server.expectHeadMissing('/repo1/org/parent/1.0/parent-1.0.jar')
         server.expectGet('/repo2/org/parent/1.0/parent-1.0.pom', parent.pomFile)
-        server.expectGet('/repo2/org/parent/1.0/parent-1.0.jar', parent.artifactFile)
+        server.expectHead('/repo2/org/parent/1.0/parent-1.0.jar', parent.artifactFile)
 
         // TODO: These shouldn't be required. Or at most should be HEAD requests
         server.expectGet('/repo1/org/child/1.0/child-1.0.pom', child.pomFile)
@@ -188,9 +175,5 @@ task retrieve(type: Sync) {
 
         then:
         file('libs').assertHasDescendants('child-1.0.jar')
-    }
-
-    MavenRepository repo() {
-        return new MavenRepository(file('repo'))
     }
 }

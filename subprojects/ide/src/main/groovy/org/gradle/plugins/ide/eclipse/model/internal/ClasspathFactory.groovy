@@ -51,17 +51,15 @@ class ClasspathFactory {
 
     private final ClasspathEntryBuilder librariesCreator = new ClasspathEntryBuilder() {
         void update(List<ClasspathEntry> entries, EclipseClasspath classpath) {
-            def referenceFactory = classpath.fileReferenceFactory
-
             dependenciesExtractor.extractRepoFileDependencies(
                     classpath.project.configurations, classpath.plusConfigurations, classpath.minusConfigurations, classpath.downloadSources, classpath.downloadJavadoc)
             .each { IdeRepoFileDependency it ->
-                entries << createLibraryEntry(it.file, it.sourceFile, it.javadocFile, it.declaredConfiguration.name, referenceFactory)
+                entries << createLibraryEntry(it.file, it.sourceFile, it.javadocFile, it.declaredConfiguration.name, classpath)
             }
 
             dependenciesExtractor.extractLocalFileDependencies(classpath.plusConfigurations, classpath.minusConfigurations)
             .each { IdeLocalFileDependency it ->
-                entries << createLibraryEntry(it.file, null, null, it.declaredConfiguration.name, referenceFactory)
+                entries << createLibraryEntry(it.file, null, null, it.declaredConfiguration.name, classpath)
             }
         }
     }
@@ -75,6 +73,7 @@ class ClasspathFactory {
         outputCreator.update(entries, classpath)
         sourceFoldersCreator.populateForClasspath(entries, classpath)
         containersCreator.update(entries, classpath)
+
         if (classpath.projectDependenciesOnly) {
             projectDependenciesCreator.update(entries, classpath)
         } else {
@@ -85,18 +84,20 @@ class ClasspathFactory {
         return entries
     }
 
-    private AbstractLibrary createLibraryEntry(File binary, File source, File javadoc, String declaredConfigurationName, FileReferenceFactory referenceFactory) {
+    private AbstractLibrary createLibraryEntry(File binary, File source, File javadoc, String declaredConfigurationName, EclipseClasspath classpath) {
+        def referenceFactory = classpath.fileReferenceFactory
+        
         def binaryRef = referenceFactory.fromFile(binary)
         def sourceRef = referenceFactory.fromFile(source)
-        def javadocRef = referenceFactory.fromFile(javadoc)
+        def javadocRef = referenceFactory.fromFile(javadoc);
         def out
         if (binaryRef.relativeToPathVariable) {
             out = new Variable(binaryRef)
         } else {
             out = new Library(binaryRef)
         }
-        out.sourcePath = sourceRef
         out.javadocPath = javadocRef
+        out.sourcePath = sourceRef
         out.exported = true
         out.declaredConfigurationName = declaredConfigurationName
         out

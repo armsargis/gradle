@@ -19,21 +19,24 @@ package org.gradle.initialization;
 import org.gradle.BuildAdapter;
 import org.gradle.GradleLauncher;
 import org.gradle.StartParameter;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.api.internal.plugins.EmbeddableJavaProject;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.CacheBuilder;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.PersistentStateCache;
+import org.gradle.cache.internal.FileIntegrityViolationSuppressingPersistentStateCacheDecorator;
+import org.gradle.util.ClassPath;
+import org.gradle.util.DefaultClassPath;
 import org.gradle.util.WrapUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * @author Hans Dockter
@@ -54,26 +57,17 @@ public class BuildSourceBuilder {
     }
 
     public URLClassLoader buildAndCreateClassLoader(StartParameter startParameter) {
-        Set<File> classpath = createBuildSourceClasspath(startParameter);
-        Iterator<File> classpathIterator = classpath.iterator();
-        URL[] urls = new URL[classpath.size()];
-        for (int i = 0; i < urls.length; i++) {
-            try {
-                urls[i] = classpathIterator.next().toURI().toURL();
-            } catch (MalformedURLException e) {
-                throw new UncheckedIOException(e);
-            }
-        }
-        return new URLClassLoader(urls, classLoaderRegistry.getRootClassLoader());
+        ClassPath classpath = createBuildSourceClasspath(startParameter);
+        return new URLClassLoader(classpath.getAsURLArray(), classLoaderRegistry.getRootClassLoader());
     }
 
-    public Set<File> createBuildSourceClasspath(StartParameter startParameter) {
+    private ClassPath createBuildSourceClasspath(StartParameter startParameter) {
         assert startParameter.getCurrentDir() != null && startParameter.getBuildFile() == null;
 
         LOGGER.debug("Starting to build the build sources.");
         if (!startParameter.getCurrentDir().isDirectory()) {
             LOGGER.debug("Gradle source dir does not exist. We leave.");
-            return new HashSet<File>();
+            return new DefaultClassPath();
         }
         LOGGER.info("================================================" + " Start building buildSrc");
         StartParameter startParameterArg = startParameter.newInstance();
@@ -83,7 +77,14 @@ public class BuildSourceBuilder {
 
         // If we were not the most recent version of Gradle to build the buildSrc dir, then do a clean build
         // Otherwise, just to a regular build
-        PersistentStateCache<Boolean> stateCache = cacheRepository.stateCache(Boolean.class, "buildSrc").forObject(startParameter.getCurrentDir()).withVersionStrategy(CacheBuilder.VersionStrategy.SharedCacheInvalidateOnVersionChange).open();
+        PersistentStateCache<Boolean> stateCache =
+                new FileIntegrityViolationSuppressingPersistentStateCacheDecorator<Boolean>(
+                        cacheRepository.
+                                stateCache(Boolean.class, "buildSrc").
+                                forObject(startParameter.getCurrentDir()).
+                                withVersionStrategy(CacheBuilder.VersionStrategy.SharedCacheInvalidateOnVersionChange).
+                                open()
+                );
         boolean rebuild = stateCache.get() == null;
 
         GradleLauncher gradleLauncher = gradleLauncherFactory.newInstance(startParameterArg);
@@ -98,7 +99,7 @@ public class BuildSourceBuilder {
         LOGGER.debug("Gradle source classpath is: {}", buildSourceClasspath);
         LOGGER.info("================================================" + " Finished building buildSrc");
 
-        return buildSourceClasspath;
+        return new DefaultClassPath(buildSourceClasspath);
     }
 
     static URL getDefaultScript() {

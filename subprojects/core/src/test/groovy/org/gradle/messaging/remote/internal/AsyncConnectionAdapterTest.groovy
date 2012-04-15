@@ -16,8 +16,8 @@
 package org.gradle.messaging.remote.internal
 
 import org.gradle.messaging.dispatch.Dispatch
-import org.gradle.util.ConcurrentSpecification
 import org.gradle.messaging.dispatch.DispatchFailureHandler
+import org.gradle.util.ConcurrentSpecification
 import spock.lang.Ignore
 
 @Ignore

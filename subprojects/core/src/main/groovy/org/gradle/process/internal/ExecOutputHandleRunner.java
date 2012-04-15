@@ -18,7 +18,7 @@ package org.gradle.process.internal;
 
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.messaging.concurrent.CompositeStoppable;
+import org.gradle.internal.CompositeStoppable;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -54,5 +54,10 @@ public class ExecOutputHandleRunner implements Runnable {
         } catch (Throwable t) {
             LOGGER.error(String.format("Could not %s.", displayName), t);
         }
+    }
+
+    @Override
+    public String toString() {
+        return displayName;
     }
 }

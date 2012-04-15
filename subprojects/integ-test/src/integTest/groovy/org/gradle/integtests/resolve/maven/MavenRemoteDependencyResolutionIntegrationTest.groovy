@@ -15,21 +15,14 @@
  */
 package org.gradle.integtests.resolve.maven
 
-import org.gradle.integtests.fixtures.HttpServer
-import org.gradle.integtests.fixtures.MavenRepository
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
+import org.gradle.integtests.resolve.AbstractDependencyResolutionTest
 import org.gradle.util.TestFile
 import org.junit.Rule
 
-class MavenRemoteDependencyResolutionIntegrationTest extends AbstractIntegrationSpec {
-    @Rule public final HttpServer server = new HttpServer()
+class MavenRemoteDependencyResolutionIntegrationTest extends AbstractDependencyResolutionTest {
     @Rule public final TestResources resources = new TestResources();
-
-    def "setup"() {
-        requireOwnUserHomeDir()
-    }
-
+\
     def canResolveDependenciesFromMultipleMavenRepositories() {
         given:
         List expectedFiles = ['sillyexceptions-1.0.1.jar', 'repotest-1.0.jar', 'testdep-1.0.jar', 'testdep2-1.0.jar',
@@ -46,8 +39,8 @@ class MavenRemoteDependencyResolutionIntegrationTest extends AbstractIntegration
         given:
         server.start()
 
-        def projectB = repo().module('group', 'projectB').publish()
-        def projectA = repo().module('group', 'projectA').dependsOn('projectB').publish()
+        def projectB = mavenRepo().module('group', 'projectB').publish()
+        def projectA = mavenRepo().module('group', 'projectA').dependsOn('projectB').publish()
 
         buildFile << """
 repositories {
@@ -89,7 +82,7 @@ task retrieve(type: Sync) {
     def "can resolve and cache artifact-only dependencies from an HTTP Maven repository"() {
         server.start()
         given:
-        def module = repo().module('group', 'projectA', '1.2')
+        def module = mavenRepo().module('group', 'projectA', '1.2')
         module.publish()
 
         and:
@@ -108,7 +101,7 @@ task listJars << {
         when:
         // TODO: Should meta-data be fetched for an artifact-only dependency?
         server.expectGetMissing('/repo1/group/projectA/1.2/projectA-1.2.pom')
-        server.expectGetMissing('/repo1/group/projectA/1.2/projectA-1.2.jar')
+        server.expectHeadMissing('/repo1/group/projectA/1.2/projectA-1.2.jar')
 
         server.expectGet('/repo2/group/projectA/1.2/projectA-1.2.pom', module.pomFile)
         server.expectGet('/repo2/group/projectA/1.2/projectA-1.2.jar', module.artifactFile)
@@ -128,7 +121,7 @@ task listJars << {
         given:
         server.start()
 
-        def projectA = repo().module('group', 'projectA', '1.0')
+        def projectA = mavenRepo().module('group', 'projectA', '1.0')
         projectA.artifact(classifier: 'sources')
         projectA.artifact(classifier: 'javadoc')
         projectA.publish()
@@ -170,7 +163,7 @@ task listJars << {
         given:
         server.start()
 
-        def projectA = repo().module('group', 'projectA', '1.0')
+        def projectA = mavenRepo().module('group', 'projectA', '1.0')
         projectA.publish()
 
         buildFile << """
@@ -223,15 +216,15 @@ task listJars << {
 }
 """
 
-        def projectA = repo().module('group', 'projectA').publish()
-        def projectB = repo().module('group', 'projectB').publish()
+        def projectA = mavenRepo().module('group', 'projectA').publish()
+        def projectB = mavenRepo().module('group', 'projectB').publish()
 
         when:
         server.expectGet('/repo1/group/projectA/1.0/projectA-1.0.pom', projectA.pomFile)
 
         // Looks for POM and JAR in repo1 before looking in repo2 (jar is an attempt to handle publication without module descriptor)
         server.expectGetMissing('/repo1/group/projectB/1.0/projectB-1.0.pom')
-        server.expectGetMissing('/repo1/group/projectB/1.0/projectB-1.0.jar')
+        server.expectHeadMissing('/repo1/group/projectB/1.0/projectB-1.0.jar')
         server.expectGet('/repo2/group/projectB/1.0/projectB-1.0.pom', projectB.pomFile)
 
         server.expectGet('/repo1/group/projectA/1.0/projectA-1.0.jar', projectA.artifactFile)
@@ -268,8 +261,8 @@ task listJars << {
 }
 """
 
-        def projectA = repo().module('group', 'projectA')
-        def projectB = repo().module('group', 'projectB')
+        def projectA = mavenRepo().module('group', 'projectA')
+        def projectB = mavenRepo().module('group', 'projectB')
         projectA.publish()
         projectB.publish()
 
@@ -310,7 +303,7 @@ task retrieve(type: Sync) {
 }
 """
         and:
-        def module = repo().module('group', 'projectA', '1.2')
+        def module = mavenRepo().module('group', 'projectA', '1.2')
         module.publish()
 
         when:
@@ -322,9 +315,5 @@ task retrieve(type: Sync) {
         
         then:
         file('build').assertHasDescendants('projectA-1.2.jar')
-    }
-
-    MavenRepository repo() {
-        return new MavenRepository(file('repo'))
     }
 }

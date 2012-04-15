@@ -16,30 +16,50 @@
 package org.gradle.integtests.fixtures
 
 import java.security.Principal
+import java.util.zip.GZIPOutputStream
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
-import org.junit.rules.MethodRule
-import org.junit.runners.model.FrameworkMethod
-import org.junit.runners.model.Statement
-import org.mortbay.jetty.Handler
-import org.mortbay.jetty.Request
-import org.mortbay.jetty.Server
+import org.gradle.util.hash.HashUtil
+import org.junit.rules.ExternalResource
+import org.mortbay.jetty.handler.AbstractHandler
+import org.mortbay.jetty.handler.HandlerCollection
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.mortbay.jetty.handler.*
+import org.mortbay.jetty.*
 import org.mortbay.jetty.security.*
-import org.mortbay.jetty.HttpHeaders
-import org.mortbay.jetty.MimeTypes
-import org.mortbay.jetty.HttpStatus
 
-class HttpServer implements MethodRule {
-    private Logger logger = LoggerFactory.getLogger(HttpServer.class)
+class HttpServer extends ExternalResource {
+
+    private static Logger logger = LoggerFactory.getLogger(HttpServer.class)
+
     private final Server server = new Server(0)
     private final HandlerCollection collection = new HandlerCollection()
     private Throwable failure
     private TestUserRealm realm
+    
+    enum EtagStrategy {
+        NONE({ null }),
+        RAW_SHA1_HEX({ HashUtil.sha1(it as byte[]).asHexString() }),
+        NEXUS_ENCODED_SHA1({ "{SHA1{" + HashUtil.sha1(it as byte[]).asHexString() + "}}" })
+        
+        private final Closure generator
+        
+        EtagStrategy(Closure generator) {
+            this.generator = generator
+        }
+        
+        String generate(byte[] bytes) {
+            generator.call(bytes)                        
+        }
+    }
 
-    def HttpServer() {
+    // Can be an EtagStrategy, or a closure that receives a byte[] and returns an etag string, or anything that gets toString'd
+    def etags = EtagStrategy.NONE
+
+    boolean sendLastModified = true
+    boolean sendSha1Header = false
+
+    HttpServer() {
         HandlerCollection handlers = new HandlerCollection()
         handlers.addHandler(new AbstractHandler() {
             void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
@@ -65,7 +85,7 @@ class HttpServer implements MethodRule {
     }
 
     void stop() {
-        server.stop()
+        server?.stop()
     }
 
     void resetExpectations() {
@@ -75,20 +95,9 @@ class HttpServer implements MethodRule {
         collection.setHandlers()
     }
 
-    Statement apply(Statement base, FrameworkMethod method, Object target) {
-        return new Statement() {
-            @Override
-            void evaluate() {
-                try {
-                    base.evaluate()
-                } finally {
-                    stop()
-                }
-                if (failure != null) {
-                    throw failure
-                }
-            }
-        }
+    @Override
+    protected void after() {
+        stop()
     }
 
     /**
@@ -98,7 +107,7 @@ class HttpServer implements MethodRule {
         allow(path, true, ['GET', 'HEAD'], fileHandler(path, srcFile))
     }
 
-    private AbstractHandler fileHandler(String path, File srcFile) {
+    private AbstractHandler fileHandler(String path, File srcFile, Long lastModified = null, Long contentLength = null) {
         return new AbstractHandler() {
             void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
                 def file
@@ -108,14 +117,13 @@ class HttpServer implements MethodRule {
                     def relativePath = request.pathInfo.substring(path.length() + 1)
                     file = new File(srcFile, relativePath)
                 }
-                if (!file.isFile()) {
+                if (file.isFile()) {
+                    sendFile(response, file, lastModified, contentLength)
+                } else if (file.isDirectory()) {
+                    sendDirectoryListing(response, file)
+                } else {
                     response.sendError(404, "'$target' does not exist")
-                    return
                 }
-                response.setDateHeader(HttpHeaders.LAST_MODIFIED, file.lastModified())
-                response.setContentLength((int)file.length())
-                response.setContentType(new MimeTypes().getMimeByExtension(file.name).toString())
-                response.outputStream.bytes = file.bytes
             }
         }
     }
@@ -142,7 +150,6 @@ class HttpServer implements MethodRule {
         })
     }
 
-
     /**
      * Allows one HEAD request for the given URL, which return 404 status code
      */
@@ -157,15 +164,23 @@ class HttpServer implements MethodRule {
     /**
      * Allows one HEAD request for the given URL.
      */
-    void expectHead(String path, File srcFile) {
-        expect(path, false, ['HEAD'], fileHandler(path, srcFile))
+    void expectHead(String path, File srcFile, Long lastModified = null, Long contentLength = null) {
+        expect(path, false, ['HEAD'], fileHandler(path, srcFile, lastModified, contentLength))
     }
 
     /**
      * Allows one GET request for the given URL. Reads the request content from the given file.
      */
-    void expectGet(String path, File srcFile) {
-        expect(path, false, ['GET'], fileHandler(path, srcFile))
+    void expectGet(String path, File srcFile, Long lastModified = null, Long contentLength = null) {
+        expect(path, false, ['GET'], fileHandler(path, srcFile, lastModified, contentLength))
+    }
+
+    /**
+     * Allows one HEAD request, then one GET request for the given URL. Reads the request content from the given file.
+     */
+    void expectHeadThenGet(String path, File srcFile, Long lastModified = null, Long contentLength = null) {
+        expectHead(path, srcFile, lastModified, contentLength)
+        expectGet(path, srcFile, lastModified, contentLength)
     }
 
     /**
@@ -176,24 +191,97 @@ class HttpServer implements MethodRule {
     }
 
     /**
+     * Allows one GET request for the given URL, with the response being GZip encoded.
+     */
+    void expectGetGZipped(String path, File srcFile) {
+        expect(path, false, ['GET'], new AbstractHandler() {
+            void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
+                def file = srcFile
+                if (file.isFile()) {
+                    response.setHeader("Content-Encoding", "gzip")
+                    response.setDateHeader(HttpHeaders.LAST_MODIFIED, srcFile.lastModified())
+                    def stream = new GZIPOutputStream(response.outputStream)
+                    stream.write(file.bytes)
+                    stream.close()
+                } else {
+                    response.sendError(404, "'$target' does not exist")
+                }
+            }
+        });
+    }
+
+    /**
+     * Allow one GET request for the given URL, responding with a redirect.
+     */
+    void expectGetRedirected(String path, String location) {
+        expectRedirected('GET', path, location)
+    }
+
+    /**
+     * Allow one HEAD request for the given URL, responding with a redirect.
+     */
+    void expectHeadRedirected(String path, String location) {
+        expectRedirected('HEAD', path, location)
+    }
+
+    private void expectRedirected(String method, String path, String location) {
+        expect(path, false, [method], new AbstractHandler() {
+            void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
+                response.sendRedirect(location)
+            }
+        })
+    }
+
+    /**
      * Allows one GET request for the given URL, returning an apache-compatible directory listing with the given File names.
      */
     void expectGetDirectoryListing(String path, File directory) {
+        expect(path, false, ['GET'], new AbstractHandler() {
+            void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
+                sendDirectoryListing(response, directory)
+            }
+        })
+    }
+
+    private sendFile(HttpServletResponse response, File file, Long lastModified, Long contentLength) {
+        if (sendLastModified) {
+            response.setDateHeader(HttpHeaders.LAST_MODIFIED, lastModified ?: file.lastModified())
+        }
+        response.setContentLength((contentLength ?: file.length()) as int)
+        response.setContentType(new MimeTypes().getMimeByExtension(file.name).toString())
+        if (sendSha1Header) {
+            response.addHeader("X-Checksum-Sha1", HashUtil.sha1(file).asHexString())
+        }
+        addEtag(response, file.bytes, etags)
+        response.outputStream << new FileInputStream(file)
+    }
+
+    private addEtag(HttpServletResponse response, byte[] bytes, etagStrategy) {
+        if (etagStrategy != null) {
+            String value
+            if (etags instanceof EtagStrategy) {
+                value = etags.generate(bytes)
+            } else if (etagStrategy instanceof Closure) {
+                value = etagStrategy.call(bytes)
+            } else {
+                value = etagStrategy.toString()
+            }
+
+            if (value != null) {
+                response.addHeader(HttpHeaders.ETAG, value)
+            }
+        }
+    }
+
+    private sendDirectoryListing(HttpServletResponse response, File directory) {
         def directoryListing = ""
         for (String fileName: directory.list()) {
             directoryListing += "<a href=\"$fileName\">$fileName</a>"
         }
-        expect(path, false, ['GET'], stringHandler(path, directoryListing))
-    }
 
-    private AbstractHandler stringHandler(String path, String content) {
-        return new AbstractHandler() {
-            void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
-                response.setContentLength(content.length())
-                response.setContentType("text/plain")
-                response.outputStream.bytes = content.bytes
-            }
-        }
+        response.setContentLength(directoryListing.length())
+        response.setContentType("text/plain")
+        response.outputStream.bytes = directoryListing.bytes
     }
 
     /**
@@ -215,7 +303,7 @@ class HttpServer implements MethodRule {
         expect(path, false, ['PUT'], withAuthentication(path, username, password, new AbstractHandler() {
             void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
                 if (request.remoteUser != username) {
-                    response.sendError(500, 'unexpected username')
+                    response.sendError(500, "unexpected username '${request.remoteUser}'")
                     return
                 }
                 destFile.bytes = request.inputStream.bytes
@@ -248,7 +336,7 @@ class HttpServer implements MethodRule {
         return new AbstractHandler() {
             void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
                 if (request.remoteUser != username) {
-                    response.sendError(500, 'unexpected username')
+                    response.sendError(500, "unexpected username '${request.remoteUser}'")
                     return
                 }
                 handler.handle(target, request, response, dispatch)
@@ -297,7 +385,14 @@ class HttpServer implements MethodRule {
     }
 
     int getPort() {
-        return server.connectors[0].localPort
+        def port = server.connectors[0].localPort
+        if (port < 0) {
+            throw new RuntimeException("""No port available for HTTP server. Still starting perhaps?
+connector: ${server.connectors[0]}
+state: ${server.connectors[0].dump()}
+""")
+        }
+        return port
     }
 
     static class TestUserRealm implements UserRealm {

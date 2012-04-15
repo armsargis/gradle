@@ -29,7 +29,8 @@ public class BuildModelAction implements GradleLauncherAction<ProjectVersion3> {
 
     public BuildModelAction(Class<? extends ProjectVersion3> type) {
         List<? extends BuildsModel> modelBuilders = asList(
-                new EclipseModelBuilder(), new IdeaModelBuilder(), new GradleProjectBuilder(), new BasicIdeaModelBuilder());
+                new EclipseModelBuilder(), new IdeaModelBuilder(),
+                new GradleProjectBuilder(), new BasicIdeaModelBuilder());
 
         for (BuildsModel builder : modelBuilders) {
             if (builder.canBuild(type)) {
@@ -38,7 +39,7 @@ public class BuildModelAction implements GradleLauncherAction<ProjectVersion3> {
             }
         }
 
-        throw new UnsupportedOperationException(String.format("Do not know how to build a model of type '%s'.", type.getSimpleName()));
+        throw new UnsupportedOperationException(String.format("I don't know how to build a model of type '%s'.", type.getSimpleName()));
     }
 
     public BuildResult run(GradleLauncher launcher) {

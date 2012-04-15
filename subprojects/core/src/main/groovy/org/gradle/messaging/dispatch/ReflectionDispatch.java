@@ -16,7 +16,7 @@
 
 package org.gradle.messaging.dispatch;
 
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.UncheckedException;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -34,9 +34,9 @@ public class ReflectionDispatch implements Dispatch<MethodInvocation> {
             method.setAccessible(true);
             method.invoke(target, message.getArguments());
         } catch (InvocationTargetException e) {
-            throw UncheckedException.asUncheckedException(e.getCause());
+            throw UncheckedException.throwAsUncheckedException(e.getCause());
         } catch (Throwable throwable) {
-            throw UncheckedException.asUncheckedException(throwable);
+            throw UncheckedException.throwAsUncheckedException(throwable);
         }
     }
 }

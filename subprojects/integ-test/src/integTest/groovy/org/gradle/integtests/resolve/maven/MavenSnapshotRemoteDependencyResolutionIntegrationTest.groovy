@@ -15,18 +15,11 @@
  */
 package org.gradle.integtests.resolve.maven
 
-import org.gradle.integtests.fixtures.HttpServer
 import org.gradle.integtests.fixtures.MavenModule
 import org.gradle.integtests.fixtures.MavenRepository
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
-import org.junit.Rule
+import org.gradle.integtests.resolve.AbstractDependencyResolutionTest
 
-class MavenSnapshotRemoteDependencyResolutionIntegrationTest extends AbstractIntegrationSpec {
-    @Rule public final HttpServer server = new HttpServer()
-    
-    def "setup"() {
-        requireOwnUserHomeDir()
-    }
+class MavenSnapshotRemoteDependencyResolutionIntegrationTest extends AbstractDependencyResolutionTest {
 
     def "can find and cache snapshots in multiple Maven HTTP repositories"() {
         server.start()
@@ -53,9 +46,9 @@ task retrieve(type: Sync) {
 """
 
         and: "snapshot modules are published"
-        def projectA = repo().module("org.gradle", "projectA", "1.0-SNAPSHOT").publish()
-        def projectB = repo().module("org.gradle", "projectB", "1.0-SNAPSHOT").publish()
-        def nonUnique = repo().module("org.gradle", "nonunique", "1.0-SNAPSHOT").withNonUniqueSnapshots().publish()
+        def projectA = mavenRepo().module("org.gradle", "projectA", "1.0-SNAPSHOT").publish()
+        def projectB = mavenRepo().module("org.gradle", "projectB", "1.0-SNAPSHOT").publish()
+        def nonUnique = mavenRepo().module("org.gradle", "nonunique", "1.0-SNAPSHOT").withNonUniqueSnapshots().publish()
 
         when: "Server provides projectA from repo1"
         expectModuleServed(projectA, '/repo1')
@@ -81,8 +74,7 @@ task retrieve(type: Sync) {
         def result = run('retrieve')
 
         then: "Everything is up to date"
-        // TODO:DAZ
-//        result.assertTaskSkipped(':retrieve')
+        result.assertTaskSkipped(':retrieve')
         file('libs/projectA-1.0-SNAPSHOT.jar').assertHasNotChangedSince(snapshotA);
         file('libs/nonunique-1.0-SNAPSHOT.jar').assertHasNotChangedSince(snapshotNonUnique);
     }
@@ -113,8 +105,8 @@ task retrieve(type: Sync) {
 """
 
         and: "snapshot modules are published"
-        def projectA = repo().module("org.gradle", "projectA", "1.0-SNAPSHOT").publish()
-        def projectB = repo().module("org.gradle", "projectB", "1.0-SNAPSHOT").publish()
+        def projectA = mavenRepo().module("org.gradle", "projectA", "1.0-SNAPSHOT").publish()
+        def projectB = mavenRepo().module("org.gradle", "projectB", "1.0-SNAPSHOT").publish()
 
         when: "Server provides projectA from repo1"
         expectModuleServed(projectA, '/repo1')
@@ -143,10 +135,63 @@ task retrieve(type: Sync) {
         def result = run('retrieve')
 
         then: "Everything is up to date"
-        // TODO:DAZ
-//        result.assertTaskSkipped(':retrieve')
+        result.assertTaskSkipped(':retrieve')
         file('libs/projectA-1.0-SNAPSHOT.jar').assertHasNotChangedSince(snapshotA);
         file('libs/projectB-1.0-SNAPSHOT.jar').assertHasNotChangedSince(snapshotB);
+    }
+
+    def "will detect changed snapshot artifacts when pom has not changed"() {
+        server.start()
+
+        buildFile << """
+repositories {
+    maven { url "http://localhost:${server.port}/repo" }
+}
+
+configurations { compile }
+configurations.compile.resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+
+dependencies { 
+    compile "org.gradle:unique:1.0-SNAPSHOT" 
+    compile "org.gradle:nonunique:1.0-SNAPSHOT" 
+}
+
+task retrieve(type: Sync) {
+    into 'libs'
+    from configurations.compile
+}
+"""
+
+        when: "snapshot modules are published"
+        def uniqueVersionModule = mavenRepo().module("org.gradle", "unique", "1.0-SNAPSHOT").publish()
+        def nonUniqueVersionModule = mavenRepo().module("org.gradle", "nonunique", "1.0-SNAPSHOT").withNonUniqueSnapshots().publish()
+
+        and: "Server handles requests"
+        expectModuleServed(uniqueVersionModule, '/repo', false, true)
+        expectModuleServed(nonUniqueVersionModule, '/repo', false, true)
+
+        and: "We resolve dependencies"
+        run 'retrieve'
+
+        then: "Snapshots are downloaded"
+        file('libs').assertHasDescendants('unique-1.0-SNAPSHOT.jar', 'nonunique-1.0-SNAPSHOT.jar')
+        def uniqueJarSnapshot = file('libs/unique-1.0-SNAPSHOT.jar').assertIsCopyOf(uniqueVersionModule.artifactFile).snapshot()
+        def nonUniqueJarSnapshot = file('libs/unique-1.0-SNAPSHOT.jar').assertIsCopyOf(uniqueVersionModule.artifactFile).snapshot()
+
+        when: "Change the snapshot artifacts directly: do not change the pom"
+        uniqueVersionModule.artifactFile << 'more content'
+        nonUniqueVersionModule.artifactFile << 'more content'
+
+        and: "No server requests"
+        expectModuleServed(uniqueVersionModule, '/repo', true, true)
+        expectModuleServed(nonUniqueVersionModule, '/repo', true, true)
+
+        and: "Resolve dependencies again"
+        run 'retrieve'
+
+        then:
+        file('libs/unique-1.0-SNAPSHOT.jar').assertIsCopyOf(uniqueVersionModule.artifactFile).assertHasChangedSince(uniqueJarSnapshot)
+        file('libs/nonunique-1.0-SNAPSHOT.jar').assertIsCopyOf(nonUniqueVersionModule.artifactFile).assertHasChangedSince(nonUniqueJarSnapshot)
     }
 
     def "uses cached snapshots from a Maven HTTP repository until the snapshot timeout is reached"() {
@@ -178,9 +223,9 @@ task retrieve(type: Sync) {
 """
 
         when: "snapshot modules are published"
-        def uniqueVersionModule = repo().module("org.gradle", "unique", "1.0-SNAPSHOT")
+        def uniqueVersionModule = mavenRepo().module("org.gradle", "unique", "1.0-SNAPSHOT")
         uniqueVersionModule.publish()
-        def nonUniqueVersionModule = repo().module("org.gradle", "nonunique", "1.0-SNAPSHOT").withNonUniqueSnapshots()
+        def nonUniqueVersionModule = mavenRepo().module("org.gradle", "nonunique", "1.0-SNAPSHOT").withNonUniqueSnapshots()
         nonUniqueVersionModule.publish()
 
         and: "Server handles requests"
@@ -196,7 +241,6 @@ task retrieve(type: Sync) {
         def nonUniqueJarSnapshot = file('libs/nonunique-1.0-SNAPSHOT.jar').assertIsCopyOf(nonUniqueVersionModule.artifactFile).snapshot()
 
         when: "Republish the snapshots"
-        waitOneSecondSoThatPublicationDateWillHaveChanged()
         uniqueVersionModule.publishWithChangedContent()
         nonUniqueVersionModule.publishWithChangedContent()
 
@@ -209,26 +253,19 @@ task retrieve(type: Sync) {
         then:
         file('libs/unique-1.0-SNAPSHOT.jar').assertHasNotChangedSince(uniqueJarSnapshot)
         file('libs/nonunique-1.0-SNAPSHOT.jar').assertHasNotChangedSince(nonUniqueJarSnapshot)
-        
+
         when: "Server handles requests"
-        expectModuleServed(uniqueVersionModule, '/repo')
-        expectModuleServed(nonUniqueVersionModule, '/repo')
-        
+        expectModuleServed(uniqueVersionModule, '/repo', true, true)
+        expectModuleServed(nonUniqueVersionModule, '/repo', true, true)
+
         and: "Resolve dependencies with cache expired"
         executer.withArguments("-PnoTimeout")
         run 'retrieve'
-        
+
         then:
         file('libs').assertHasDescendants('unique-1.0-SNAPSHOT.jar', 'nonunique-1.0-SNAPSHOT.jar')
         file('libs/unique-1.0-SNAPSHOT.jar').assertIsCopyOf(uniqueVersionModule.artifactFile).assertHasChangedSince(uniqueJarSnapshot)
         file('libs/nonunique-1.0-SNAPSHOT.jar').assertIsCopyOf(nonUniqueVersionModule.artifactFile).assertHasChangedSince(nonUniqueJarSnapshot);
-    }
-
-    private def waitOneSecondSoThatPublicationDateWillHaveChanged() {
-        // TODO:DAZ Remove this
-        // Ivy checks the publication date to see if it's _really_ changed, won't delete the artifacts if not.
-        // So wait a second to ensure the date will be different.
-        Thread.sleep(1000)
     }
 
     def "does not download snapshot artifacts after expiry when snapshot has not changed"() {
@@ -256,7 +293,7 @@ task retrieve(type: Sync) {
 """
 
         when: "Publish the first snapshot"
-        def module = repo().module("org.gradle", "testproject", "1.0-SNAPSHOT")
+        def module = mavenRepo().module("org.gradle", "testproject", "1.0-SNAPSHOT")
         module.publish()
 
         and: "Server handles requests"
@@ -264,45 +301,289 @@ task retrieve(type: Sync) {
 
         and:
         run 'retrieve'
-        
+
         then:
         file('build').assertHasDescendants('testproject-1.0-SNAPSHOT.jar')
         def snapshot = file('build/testproject-1.0-SNAPSHOT.jar').assertIsCopyOf(module.artifactFile).snapshot()
 
         when: "Server handles requests"
         server.resetExpectations()
-        server.expectGet('/repo/org/gradle/testproject/1.0-SNAPSHOT/maven-metadata.xml', module.moduleDir.file("maven-metadata.xml"))
-        server.expectGet("/repo/org/gradle/testproject/1.0-SNAPSHOT/${module.pomFile.name}", module.pomFile)
+        expectChangedProbe('/repo', module, false)
 
         // Retrieve again with zero timeout should check for updated snapshot
-        and: 
+        and:
         def result = run 'retrieve'
-        
+
         then:
-        // TODO:DAZ
-//        result.assertTaskSkipped(':retrieve')
+        result.assertTaskSkipped(':retrieve')
         file('build/testproject-1.0-SNAPSHOT.jar').assertHasNotChangedSince(snapshot);
     }
 
-    private expectModuleServed(MavenModule module, def prefix) {
+    def "does not download snapshot artifacts more than once per build"() {
+        server.start()
+        given:
+        def module = mavenRepo().module("org.gradle", "testproject", "1.0-SNAPSHOT")
+        module.publish()
+
+        and:
+        settingsFile << "include 'a', 'b'"
+        buildFile << """
+allprojects {
+    repositories {
+        maven { url "http://localhost:${server.port}/repo" }
+    }
+
+    configurations { compile }
+
+    configurations.all {
+        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    }
+
+    dependencies {
+        compile "org.gradle:testproject:1.0-SNAPSHOT"
+    }
+
+    task retrieve(type: Sync) {
+        into 'build'
+        from configurations.compile
+    }
+}
+"""
+        when: "Module is requested once"
+        expectModuleServed(module, '/repo')
+
+        then:
+        run 'retrieve'
+
+        and:
+        file('build').assertHasDescendants('testproject-1.0-SNAPSHOT.jar')
+        file('a/build').assertHasDescendants('testproject-1.0-SNAPSHOT.jar')
+        file('b/build').assertHasDescendants('testproject-1.0-SNAPSHOT.jar')
+    }
+
+    def "can update snapshot artifact during build even if it is locked earlier in build"() {
+        server.start()
+        given:
+        def module = mavenRepo().module("org.gradle", "testproject", "1.0-SNAPSHOT").withNonUniqueSnapshots().publish()
+        def module2 = new MavenRepository(file('repo2')).module("org.gradle", "testproject", "1.0-SNAPSHOT").withNonUniqueSnapshots().publishWithChangedContent()
+        module2.artifactFile << module2.artifactFile.bytes // ensure it's a different length to the first one
+
+        and:
+        settingsFile << "include 'lock', 'resolve'"
+        buildFile << """
+def fileLocks = [:]
+subprojects {
+    repositories {
+        maven { url "http://localhost:${server.port}/repo" }
+    }
+
+    configurations { compile }
+
+    configurations.all {
+        resolutionStrategy.resolutionRules.eachModule({ module ->
+            module.refresh()
+        } as Action)
+    }
+
+    dependencies {
+        compile "org.gradle:testproject:1.0-SNAPSHOT"
+    }
+
+    task lock << {
+        configurations.compile.each { file ->
+            println "locking " + file
+            def lockFile = new RandomAccessFile(file.canonicalPath, 'r')
+            fileLocks[file] = lockFile
+        }
+    }
+
+    task retrieve(type: Sync) {
+        into 'build'
+        from configurations.compile
+    }
+    retrieve.dependsOn 'lock'
+}
+project('resolve') {
+    retrieve.dependsOn ':lock:retrieve'
+
+    task cleanup << {
+        fileLocks.each { key, value ->
+            println "unlocking " + key
+            value.close()
+        }
+    }
+    cleanup.dependsOn 'retrieve'
+}
+"""
+        when: "Module is requested once"
+        def moduleName = module.artifactId
+        def prefix = "/repo"
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}", module.pomFile)
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}", module.artifactFile)
+
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module2.moduleDir.file("maven-metadata.xml"))
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}.sha1", module2.sha1File(module2.pomFile))
+        server.expectHead("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}", module2.pomFile)
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}", module2.pomFile)
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module2.moduleDir.file("maven-metadata.xml"))
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}.sha1", module2.sha1File(module2.artifactFile))
+        server.expectHead("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}", module2.artifactFile)
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}", module2.artifactFile)
+
+        then:
+        run 'cleanup'
+
+        and:
+        file('lock/build/testproject-1.0-SNAPSHOT.jar').assertIsCopyOf(module.artifactFile)
+        file('resolve/build/testproject-1.0-SNAPSHOT.jar').assertIsCopyOf(module2.artifactFile)
+    }
+
+    def "avoid redownload unchanged artifact when no checksum available"() {
+        server.start()
+
+        given:
+        buildFile << """
+            repositories {
+                maven { url "http://localhost:${server.port}/repo" }
+            }
+
+            configurations { compile }
+
+            configurations.all {
+                resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+            }
+
+            dependencies {
+                compile group: "group", name: "projectA", version: "1.1-SNAPSHOT"
+            }
+
+            task retrieve(type: Copy) {
+                into 'build'
+                from configurations.compile
+            }
+        """
+
+        and:
+        def module = mavenRepo().module("group", "projectA", "1.1-SNAPSHOT").withNonUniqueSnapshots().publish()
+        // Set the last modified to something that's not going to be anything “else”.
+        // There are lots of dates floating around in a resolution and we want to make
+        // sure we use this.
+        module.artifactFile.setLastModified(2000)
+        module.pomFile.setLastModified(6000)
+
+        def base = "/repo/group/projectA/1.1-SNAPSHOT"
+        def metaDataPath = "$base/maven-metadata.xml"
+        def pomPath = "$base/$module.pomFile.name"
+        def pomSha1Path = "${pomPath}.sha1"
+        def originalPomLastMod = module.pomFile.lastModified()
+        def originalPomContentLength = module.pomFile.length()
+        def jarPath = "$base/$module.artifactFile.name"
+        def jarSha1Path = "${jarPath}.sha1"
+        def originalJarLastMod = module.artifactFile.lastModified()
+        def originalJarContentLength = module.artifactFile.length()
+
+        when:
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGet(pomPath, module.pomFile)
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGet(jarPath, module.artifactFile)
+
+        run "retrieve"
+
+        then:
+        def downloadedJarFile = file("build/projectA-1.1-SNAPSHOT.jar")
+        downloadedJarFile.assertIsCopyOf(module.artifactFile)
+        def initialDownloadJarFileSnapshot = downloadedJarFile.snapshot()
+
+        // Do change the jar, so we can check that the new version wasn't downloaded
+        module.publishWithChangedContent()
+
+        when:
+        server.resetExpectations()
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGetMissing(pomSha1Path)
+        server.expectHead(pomPath, module.pomFile, originalPomLastMod, originalPomContentLength)
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGetMissing(jarSha1Path)
+        server.expectHead(jarPath, module.artifactFile, originalJarLastMod, originalJarContentLength)
+
+        run "retrieve"
+
+        then:
+        downloadedJarFile.assertHasNotChangedSince(initialDownloadJarFileSnapshot)
+
+        when:
+        server.resetExpectations()
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGetMissing(pomSha1Path)
+        server.expectHead(pomPath, module.pomFile)
+        server.expectGet(pomPath, module.pomFile)
+        server.expectGet(metaDataPath, module.mavenMetaDataFile)
+        server.expectGetMissing(jarSha1Path)
+        server.expectHead(jarPath, module.artifactFile)
+        server.expectGet(jarPath, module.artifactFile)
+
+
+        run "retrieve"
+
+        then:
+        downloadedJarFile.assertHasChangedSince(initialDownloadJarFileSnapshot)
+        downloadedJarFile.assertIsCopyOf(module.artifactFile)
+    }
+
+    private expectModuleServed(MavenModule module, def prefix, boolean sha1requests = false, boolean headRequests = false) {
         def moduleName = module.artifactId;
         server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
         server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}", module.pomFile)
         // TODO - should only ask for metadata once
         server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
         server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}", module.artifactFile)
+
+        if (sha1requests) {
+            server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}.sha1", module.sha1File(module.pomFile))
+            server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}.sha1", module.sha1File(module.artifactFile))
+        }
+
+        if (headRequests) {
+            server.expectHead("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}", module.pomFile)
+            server.expectHead("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}", module.artifactFile)
+        }
     }
 
+    private expectReuseModuleArtifacts(MavenModule module, def prefix, boolean metaDataMatch) {
+        def moduleName = module.artifactId;
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
+        
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.pomFile.name}.sha1", module.sha1File(module.pomFile))
+        // TODO - should only ask for metadata once
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml", module.moduleDir.file("maven-metadata.xml"))
+        server.expectGet("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${module.artifactFile.name}.sha1", module.sha1File(module.artifactFile))
+    }
+
+    private expectChangedProbe(prefix, MavenModule module, boolean expectSha1) {
+        module.expectMetaDataGet(server, prefix)
+        module.expectPomHead(server, prefix)
+        if (expectSha1) {
+            module.expectPomSha1Get(server, prefix)
+        }
+
+        module.expectMetaDataGet(server, prefix)
+        module.expectArtifactHead(server, prefix)
+        if (expectSha1) {
+            module.expectArtifactSha1Get(server, prefix)
+        }
+    }
+    
     private expectModuleMissing(MavenModule module, def prefix) {
         def moduleName = module.artifactId;
         server.expectGetMissing("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml")
         server.expectGetMissing("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${moduleName}-1.0-SNAPSHOT.pom")
         // TODO - should only ask for metadata once
         server.expectGetMissing("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/maven-metadata.xml")
-        server.expectGetMissing("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${moduleName}-1.0-SNAPSHOT.jar")
+        server.expectHeadMissing("${prefix}/org/gradle/${moduleName}/1.0-SNAPSHOT/${moduleName}-1.0-SNAPSHOT.jar")
     }
 
-    MavenRepository repo() {
-        return new MavenRepository(file('repo'))
-    }
+
 }

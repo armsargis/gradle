@@ -74,7 +74,7 @@ class CacheProjectIntegrationTest {
         classFile.assertHasChangedSince(classFileSnapshot)
         classFileSnapshot = classFile.snapshot()
 
-        testBuild("newTask", "I am new", "-Crebuild")
+        testBuild("newTask", "I am new", "--recompile-scripts")
         classFile.assertHasChangedSince(classFileSnapshot)
     }
 
@@ -91,8 +91,21 @@ class CacheProjectIntegrationTest {
         artifactsCache.assertHasChangedSince(artifactsCacheSnapshot)
         artifactsCacheSnapshot = artifactsCache.snapshot()
 
-        testBuild("hello2", "Hello 2", "-Crebuild")
+        testBuild("hello2", "Hello 2", "-rerun-tasks")
         artifactsCache.assertHasChangedSince(artifactsCacheSnapshot)
+    }
+
+    @Test
+    public void "does not rebuild artifact cache when run with --recompile-scripts"() {
+        createLargeBuildScript()
+        testBuild("hello1", "Hello 1")
+
+        TestFile dependenciesCache = findDependencyCacheDir()
+        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
+
+        modifyLargeBuildScript()
+        testBuild("newTask", "I am new", "--recompile-scripts")
+        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
     }
 
     @Test
@@ -108,10 +121,22 @@ class CacheProjectIntegrationTest {
         assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
     }
 
+    @Test
+    public void "does not rebuild artifact cache when run with --rerun-tasks"() {
+        createLargeBuildScript()
+        testBuild("hello1", "Hello 1")
+
+        TestFile dependenciesCache = findDependencyCacheDir()
+        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
+
+        modifyLargeBuildScript()
+        testBuild("newTask", "I am new", "--rerun-tasks")
+        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
+    }
+
     private TestFile findDependencyCacheDir() {
         def cacheVersion = DefaultCacheLockingManager.CACHE_LAYOUT_VERSION
-        // Find the first directory under 'artifacts': it will be the resolver key
-        def resolverArtifactCache = new TestFile(userHomeDir.file("caches/artifacts-${cacheVersion}/artifacts").listFiles().first())
+        def resolverArtifactCache = new TestFile(userHomeDir.file("caches/artifacts-${cacheVersion}/filestore"))
         return resolverArtifactCache.file("commons-io/commons-io/")
     }
 

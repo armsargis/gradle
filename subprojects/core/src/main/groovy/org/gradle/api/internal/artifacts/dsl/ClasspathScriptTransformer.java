@@ -31,7 +31,7 @@ import org.codehaus.groovy.control.SourceUnit;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.groovy.scripts.Transformer;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.UncheckedException;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -67,7 +67,7 @@ public abstract class ClasspathScriptTransformer extends AbstractScriptTransform
                     Map value = (Map) field.get(source.getAST());
                     value.remove(importedClass.getAlias());
                 } catch (Exception e) {
-                    throw UncheckedException.asUncheckedException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         }

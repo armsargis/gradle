@@ -18,7 +18,7 @@ package org.gradle.messaging.remote;
 import java.io.Serializable;
 
 /**
- * The address for a communication endpoint.
+ * The address for a communication endpoint. Addresses are immutable.
  */
 public interface Address extends Serializable {
     /**

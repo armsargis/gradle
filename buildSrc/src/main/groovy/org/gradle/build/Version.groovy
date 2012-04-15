@@ -17,14 +17,31 @@ package org.gradle.build
 
 import java.text.SimpleDateFormat
 import org.gradle.api.GradleException
+import org.gradle.api.Project
 
 class Version {
-    String versionNumber
-    Date buildTime
-    Boolean release = null
 
-    def Version(project) {
-        this.versionNumber = project.releases.nextVersion
+    enum Type {
+        ADHOC({ !it.isReleaseBuild() }, { it }), 
+        NIGHTLY({ it.isNightlyBuild() }, { "nightly" }), 
+        RC({ it.isRcBuild() }, { "release-candidate" }), 
+        FINAL({ it.isFinalReleaseBuild() }, { it })
+        
+        final Closure detector
+        final Closure labelProvider
+        
+        Type(Closure detector, Closure labelProvider) {
+            this.detector = detector
+            this.labelProvider = labelProvider
+        }
+    }
+
+    private final Closure versionNumberProvider
+    final Date buildTime
+    private final Closure typeProvider
+
+    static forProject(Project project) {
+        def versionNumber = project.releases.nextVersion
         File timestampFile = new File(project.buildDir, 'timestamp.txt')
         if (timestampFile.isFile()) {
             boolean uptodate = true
@@ -42,33 +59,64 @@ class Version {
             timestampFile.parentFile.mkdirs()
             timestampFile.createNewFile()
         }
-        buildTime = new Date(timestampFile.lastModified())
+        def buildTime = createDateFormat().format(new Date(timestampFile.lastModified()))
 
-        project.gradle.taskGraph.whenReady {graph ->
-            if (graph.hasTask(':releaseVersion')) {
-                release = true
-            } else {
-                this.versionNumber += "-" + getTimestamp()
-                release = false
+        def type = null
+        project.gradle.taskGraph.whenReady { graph ->
+            type = Type.values().find { it.detector(project) }
+            if (type != Type.FINAL) {
+                versionNumber += "-" + buildTime
             }
         }
+
+        def typeProvider = {
+            if (type == null) {
+                throw new GradleException("Can't determine whether the type of version for this build before the task graph is populated")
+            }
+            type
+        }
+
+        new Version({ versionNumber }, buildTime, typeProvider)
+    }
+
+    Version(Closure versionNumberProvider, String buildTime, Closure typeProvider) {
+        this(versionNumberProvider, createDateFormat().parse(buildTime), typeProvider)
+    }
+
+    Version(Closure versionNumberProvider, Date buildTime, Closure typeProvider) {
+        this.versionNumberProvider = versionNumberProvider
+        this.buildTime = buildTime
+        this.typeProvider = typeProvider
+    }
+
+    static createDateFormat() {
+        new SimpleDateFormat('yyyyMMddHHmmssZ')
     }
 
     String toString() {
         versionNumber
     }
 
+    String getVersionNumber() {
+        versionNumberProvider()
+    }
+
     String getTimestamp() {
-        new SimpleDateFormat('yyyyMMddHHmmssZ').format(buildTime)
+        createDateFormat().format(buildTime)
     }
 
     boolean isRelease() {
-        if (release == null) {
-            throw new GradleException("Can't determine whether this is a release build before the task graph is populated")
-        }
-        return release
+        type == Type.FINAL
     }
 
+    Type getType() {
+        typeProvider()
+    }
+
+    String getLabel() {
+        type.labelProvider(versionNumber)
+    }
+    
     String getDistributionUrl() {
         if (release) {
             'https://gradle.artifactoryonline.com/gradle/distributions'
@@ -83,5 +131,21 @@ class Version {
         } else {
             'https://gradle.artifactoryonline.com/gradle/libs-snapshots-local'
         }
+    }
+
+    def docUrl(docLabel) {
+        "http://www.gradle.org/doc/${-> release ? 'current' : label}/$docLabel"
+    }
+
+    def getJavadocUrl() {
+        docUrl("javadoc")
+    }
+
+    def getGroovydocUrl() {
+        docUrl("groovydoc")
+    }
+
+    def getDsldocUrl() {
+        docUrl("dsl")
     }
 }

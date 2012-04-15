@@ -15,7 +15,7 @@
   -->
 <book xmlns:xi="http://www.w3.org/2001/XInclude">
     <bookinfo>
-        <title>Gradle</title>
+        <title>Gradle User Guide</title>
         <subtitle>A better way to build</subtitle>
         <copyright>
             <year>2007-2010</year>
@@ -40,6 +40,7 @@
     <xi:include href='overview.xml'/>
     <xi:include href='tutorials.xml'/>
     <xi:include href='installation.xml'/>
+    <xi:include href='troubleshooting.xml'/>
     <xi:include href='buildScriptsTutorial.xml'/>
     <xi:include href='javaTutorial.xml'/>
     <xi:include href='artifactDependenciesTutorial.xml'/>
@@ -47,7 +48,9 @@
     <xi:include href='webTutorial.xml'/>
     <xi:include href='commandLineTutorial.xml'/>
     <xi:include href='guiTutorial.xml'/>
+    <xi:include href='gradleDaemon.xml'/>
     <xi:include href='thisAndThat.xml'/>
+    <xi:include href='buildEnvironment.xml'/>
     <xi:include href='writingBuildScripts.xml'/>
     <xi:include href='tasks.xml'/>
     <xi:include href='workingWithFiles.xml'/>
@@ -61,7 +64,11 @@
     <xi:include href='warPlugin.xml'/>
     <xi:include href='earPlugin.xml'/>
     <xi:include href='jettyPlugin.xml'/>
-    <xi:include href='codeQualityPlugin.xml'/>
+    <xi:include href='checkstylePlugin.xml'/>
+    <xi:include href='codeNarcPlugin.xml'/>
+    <xi:include href='findBugsPlugin.xml'/>
+    <xi:include href='jdependPlugin.xml'/>
+    <xi:include href='pmdPlugin.xml'/>
     <xi:include href='sonarPlugin.xml'/>
     <xi:include href='osgi.xml'/>
     <xi:include href='eclipsePlugin.xml'/>

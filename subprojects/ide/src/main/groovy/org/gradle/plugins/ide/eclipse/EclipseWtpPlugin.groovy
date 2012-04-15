@@ -19,6 +19,7 @@ package org.gradle.plugins.ide.eclipse
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.internal.Instantiator
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.plugins.WarPlugin
 import org.gradle.plugins.ear.EarPlugin
@@ -33,6 +34,7 @@ class EclipseWtpPlugin extends IdePlugin {
 
     static final String ECLIPSE_WTP_COMPONENT_TASK_NAME = "eclipseWtpComponent"
     static final String ECLIPSE_WTP_FACET_TASK_NAME = "eclipseWtpFacet"
+    static final String WEB_LIBS_CONTAINER = 'org.eclipse.jst.j2ee.internal.web.container'
 
     @Override protected String getLifecycleTaskName() {
         return "eclipseWtp"
@@ -42,6 +44,7 @@ class EclipseWtpPlugin extends IdePlugin {
 
     @Override protected void onApply(Project project) {
         EclipsePlugin delegatePlugin = project.getPlugins().apply(EclipsePlugin.class);
+        delegatePlugin.model.wtp = project.services.get(Instantiator).newInstance(EclipseWtp, delegatePlugin.model.classpath)
         eclipseWtpModel = delegatePlugin.model.wtp
 
         lifecycleTask.description = 'Generates Eclipse wtp configuration files.'
@@ -60,14 +63,27 @@ class EclipseWtpPlugin extends IdePlugin {
 
     private void configureEclipseClasspathForWarPlugin(Project project) {
         project.plugins.withType(WarPlugin) {
+            project.eclipse.classpath.containers WEB_LIBS_CONTAINER
+
+            project.eclipse.classpath.file.whenMerged { Classpath classpath ->
+                for (entry in classpath.entries) {
+                    if (entry instanceof AbstractLibrary) {
+                        //this is necessary to avoid annoying warnings upon import to Eclipse
+                        //the .classpath entries can be marked all as non-deployable dependencies
+                        //because the wtp component file declares the deployable dependencies
+                        entry.entryAttributes[AbstractClasspathEntry.COMPONENT_NON_DEPENDENCY_ATTRIBUTE] = ''
+                    }
+                }
+            }
+
             doLaterWithEachDependedUponEclipseProject(project) { Project otherProject ->
-                otherProject.tasks.withType(GenerateEclipseClasspath) {
-                    classpath.file.whenMerged { Classpath classpath ->
-                        for (entry in classpath.entries) {
-                            if (entry instanceof Library) {
-                                // '../' and '/WEB-INF/lib' both seem to be correct (and equivalent) values here
-                                entry.entryAttributes['org.eclipse.jst.component.dependency'] = '../'
-                            }
+                otherProject.eclipse.classpath.file.whenMerged { Classpath classpath ->
+                    for (entry in classpath.entries) {
+                        if (entry instanceof AbstractLibrary) {
+                            // '../' and '/WEB-INF/lib' both seem to be correct (and equivalent) values here
+                            //this is necessary so that the depended upon projects will have their dependencies
+                            // deployed to WEB-INF/lib of the main project.
+                            entry.entryAttributes[AbstractClasspathEntry.COMPONENT_DEPENDENCY_ATTRIBUTE] = '../'
                         }
                     }
                 }
@@ -91,7 +107,7 @@ class EclipseWtpPlugin extends IdePlugin {
                 //model properties:
                 eclipseWtpModel.component = component
 
-                component.deployName = project.name
+                component.conventionMapping.deployName = { project.eclipse.project.name }
 
                 if (WarPlugin.class.isAssignableFrom(type)) {
                     component.libConfigurations = [project.configurations.runtime]
@@ -105,6 +121,7 @@ class EclipseWtpPlugin extends IdePlugin {
                     component.minusConfigurations = []
                     component.classesDeployPath = "/"
                     component.libDeployPath = "/lib"
+                    component.conventionMapping.sourceDirs = { [project.file { project.appDirName }] as Set }
                     project.plugins.withType(JavaPlugin) {
                         component.conventionMapping.sourceDirs = { getMainSourceDirs(project) }
                     }
@@ -125,7 +142,7 @@ class EclipseWtpPlugin extends IdePlugin {
                         //model properties:
                         eclipseWtpPlugin.eclipseWtpModel.component = component
 
-                        component.deployName = otherProject.name
+                        component.conventionMapping.deployName = { otherProject.eclipse.project.name }
                         component.conventionMapping.resources = {
                             getMainSourceDirs(otherProject).collect { new WbResource("/", otherProject.relativePath(it)) }
                         }

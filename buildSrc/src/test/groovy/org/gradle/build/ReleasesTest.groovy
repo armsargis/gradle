@@ -34,7 +34,7 @@ class ReleasesTest extends Specification {
         releases = new Releases(releasesXml, project)
     }
 
-    def "determines next release version from resources.xml"() {
+    def "determines next release version from releases xml"() {
         releasesXml << '''
 <releases>
     <next version="1.2-preview-45"/>
@@ -47,7 +47,7 @@ class ReleasesTest extends Specification {
         releases.nextVersion == '1.2-preview-45'
     }
 
-    def "generates resources.xml resource"() {
+    def "generates resources xml resource"() {
         def destFile = project.file('dest.xml')
         releasesXml << '''
 <releases>
@@ -80,7 +80,7 @@ class ReleasesTest extends Specification {
 """
     }
 
-    def calculatesNextVersion() {
+    def "calculates next version"() {
         expect:
         releases.calculateNextVersion('1.0') == '1.1-milestone-1'
         releases.calculateNextVersion('1.1.0') == '1.1.1-milestone-1'
@@ -90,12 +90,12 @@ class ReleasesTest extends Specification {
         releases.calculateNextVersion('1.0-rc-2') == '1.0-rc-3'
     }
 
-    def updatesReleasesXmlToIncrementNextVersion() {
+    def "updates releases xml To increment next version"() {
         releasesXml << '''
 <releases>
-    <next version="1.0-milestone-2"/>
-    <current version="${version}" build-time="${build=time}"/>
-    <release version="previous" build-time="20101220123412-0200"/>
+  <next version="1.0-milestone-2"/>
+  <current version="${version}" build-time="${build=time}"/>
+  <release version="previous" build-time="20101220123412-0200"/>
 </releases>
 '''
         project.version = [buildTime: buildTime]
@@ -105,10 +105,10 @@ class ReleasesTest extends Specification {
 
         then:
         releasesXml.text == """<releases>
-    <next version="1.0-milestone-3"/>
-    <current version="\${version}" build-time="\${build=time}"/>
-    <release version="1.0-milestone-2" build-time="${dateFormat.format(buildTime)}"/>
-    <release version="previous" build-time="20101220123412-0200"/>
+  <next version="1.0-milestone-3"/>
+  <current version="\${version}" build-time="\${build=time}"/>
+  <release version="1.0-milestone-2" build-time="${dateFormat.format(buildTime)}"/>
+  <release version="previous" build-time="20101220123412-0200"/>
 </releases>
 """
     }

@@ -17,6 +17,8 @@
 package org.gradle.process.internal;
 
 import org.gradle.api.Action;
+import org.gradle.internal.id.IdGenerator;
+import org.gradle.util.ClassPath;
 import org.gradle.api.internal.ClassPathRegistry;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
@@ -26,7 +28,6 @@ import org.gradle.messaging.remote.MessagingServer;
 import org.gradle.messaging.remote.internal.inet.SocketInetAddress;
 import org.gradle.process.internal.child.IsolatedApplicationClassLoaderWorker;
 import org.gradle.process.internal.launcher.GradleWorkerMain;
-import org.gradle.util.IdGenerator;
 import org.hamcrest.Matchers;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
@@ -58,9 +59,12 @@ public class DefaultWorkerProcessFactoryTest {
     @Test
     public void createsAndConfiguresAWorkerProcess() throws Exception {
         final Set<File> processClassPath = Collections.singleton(new File("something.jar"));
+        final ClassPath classPath = context.mock(ClassPath.class);
 
         context.checking(new Expectations() {{
-            one(classPathRegistry).getClassPathFiles("WORKER_PROCESS");
+            one(classPathRegistry).getClassPath("WORKER_PROCESS");
+            will(returnValue(classPath));
+            allowing(classPath).getAsFiles();
             will(returnValue(processClassPath));
             allowing(fileResolver).resolveLater(".");
             allowing(fileResolver).resolveFiles(with(Matchers.<Object>notNullValue()));

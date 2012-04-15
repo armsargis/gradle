@@ -15,8 +15,8 @@
  */
 package org.gradle.messaging.dispatch;
 
-import org.gradle.messaging.concurrent.Stoppable;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.Stoppable;
+import org.gradle.internal.UncheckedException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +70,7 @@ public class QueuingDispatch<T> implements Dispatch<T>, Stoppable {
                 try {
                     condition.await();
                 } catch (InterruptedException e) {
-                    throw UncheckedException.asUncheckedException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         } finally {

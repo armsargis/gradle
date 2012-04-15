@@ -15,7 +15,7 @@
  */
 package org.gradle.cache.internal;
 
-import org.gradle.api.internal.Factory;
+import org.gradle.internal.Factory;
 
 import java.util.concurrent.Callable;
 
@@ -31,8 +31,9 @@ public interface FileAccess {
      *
      * @throws LockTimeoutException On timeout acquiring lock, if required.
      * @throws IllegalStateException When this lock has been closed.
+     * @throws FileIntegrityViolationException If the integrity of the file cannot be guaranteed (never thrown if target is a directory)
      */
-    <T> T readFromFile(Callable<? extends T> action) throws LockTimeoutException;
+    <T> T readFile(Callable<? extends T> action) throws LockTimeoutException, FileIntegrityViolationException;
 
     /**
      * Runs the given action under a shared or exclusive lock on the target file.
@@ -42,8 +43,9 @@ public interface FileAccess {
      *
      * @throws LockTimeoutException On timeout acquiring lock, if required.
      * @throws IllegalStateException When this lock has been closed.
+     * @throws FileIntegrityViolationException If the integrity of the file cannot be guaranteed (never thrown if target is a directory)
      */
-    <T> T readFromFile(Factory<? extends T> action) throws LockTimeoutException;
+    <T> T readFile(Factory<? extends T> action) throws LockTimeoutException, FileIntegrityViolationException;
 
     /**
      * Runs the given action under an exclusive lock on the target file. If the given action fails, the lock is marked as uncleanly unlocked.
@@ -54,6 +56,20 @@ public interface FileAccess {
      *
      * @throws LockTimeoutException On timeout acquiring lock, if required.
      * @throws IllegalStateException When this lock has been closed.
+     * @throws FileIntegrityViolationException If the integrity of the file cannot be guaranteed (never thrown if target is a directory)
      */
-    void writeToFile(Runnable action) throws LockTimeoutException;
+    void updateFile(Runnable action) throws LockTimeoutException, FileIntegrityViolationException;
+
+    /**
+     * Runs the given action under an exclusive lock on the target file, without checking it's integrity. If the given action fails, the lock is marked as uncleanly unlocked.
+     *
+     * <p>This method should be used when it is of no consequence if the target was not previously unlocked, e.g. the content is being replaced.
+     *
+     * <p>Besides not performing integrity checking, this method shares the locking semantics of {@link #updateFile(Runnable)}
+     *
+     * @throws LockTimeoutException On timeout acquiring lock, if required.
+     * @throws IllegalStateException When this lock has been closed.
+     */
+    void writeFile(Runnable action) throws LockTimeoutException;
+
 }

@@ -16,10 +16,12 @@
 
 package org.gradle.messaging.concurrent;
 
-import org.gradle.api.logging.Logging;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.Stoppable;
+import org.gradle.internal.UncheckedException;
 import org.gradle.messaging.dispatch.DispatchException;
 import org.gradle.messaging.dispatch.ExceptionTrackingFailureHandler;
-import org.gradle.util.UncheckedException;
+import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 import java.util.concurrent.*;
@@ -53,7 +55,7 @@ public class DefaultExecutorFactory implements ExecutorFactory, Stoppable {
 
         public StoppableExecutorImpl(ExecutorService executor) {
             this.executor = executor;
-            failureHandler = new ExceptionTrackingFailureHandler(Logging.getLogger(StoppableExecutorImpl.class));
+            failureHandler = new ExceptionTrackingFailureHandler(LoggerFactory.getLogger(StoppableExecutorImpl.class));
         }
 
         public void execute(final Runnable command) {
@@ -96,7 +98,7 @@ public class DefaultExecutorFactory implements ExecutorFactory, Stoppable {
                 try {
                     failureHandler.stop();
                 } catch (DispatchException e) {
-                    throw UncheckedException.asUncheckedException(e.getCause());
+                    throw UncheckedException.throwAsUncheckedException(e.getCause());
                 }
             } finally {
                 executors.remove(this);

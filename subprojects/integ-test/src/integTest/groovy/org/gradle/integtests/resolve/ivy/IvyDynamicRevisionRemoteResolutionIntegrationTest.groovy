@@ -15,18 +15,10 @@
  */
 package org.gradle.integtests.resolve.ivy
 
-import org.gradle.integtests.fixtures.HttpServer
 import org.gradle.integtests.fixtures.IvyModule
-import org.gradle.integtests.fixtures.IvyRepository
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
-import org.junit.Rule
+import org.gradle.integtests.resolve.AbstractDependencyResolutionTest
 
-class IvyDynamicRevisionRemoteResolutionIntegrationTest extends AbstractIntegrationSpec {
-    @Rule public final HttpServer server = new HttpServer()
-
-    def "setup"() {
-        requireOwnUserHomeDir()
-    }
+class IvyDynamicRevisionRemoteResolutionIntegrationTest extends AbstractDependencyResolutionTest {
 
     def "uses latest version from version range and latest status"() {
         server.start()
@@ -58,10 +50,9 @@ task retrieve(type: Sync) {
 """
 
         when: "Version 1.1 is published"
-        def projectA1 = repo.module("group", "projectA", "1.1")
-        projectA1.publish()
-        def projectB1 = repo.module("group", "projectB", "1.1")
-        projectB1.publish()
+        def projectA1 = repo.module("group", "projectA", "1.1").publish()
+        repo.module("group", "projectA", "2.0").publish()
+        def projectB1 = repo.module("group", "projectB", "1.1").publish()
 
         and: "Server handles requests"
         serveUpDynamicRevision(projectA1)
@@ -76,10 +67,8 @@ task retrieve(type: Sync) {
         file('libs/projectB-1.1.jar').assertIsCopyOf(projectB1.jarFile)
 
         when: "New versions are published"
-        def projectA2 = repo.module("group", "projectA", "1.2")
-        projectA2.publish()
-        def projectB2 = repo.module("group", "projectB", "2.2")
-        projectB2.publish()
+        def projectA2 = repo.module("group", "projectA", "1.2").publish()
+        def projectB2 = repo.module("group", "projectB", "2.2").publish()
 
         and: "Server handles requests"
         server.resetExpectations()
@@ -93,6 +82,111 @@ task retrieve(type: Sync) {
         file('libs').assertHasDescendants('projectA-1.2.jar', 'projectB-2.2.jar')
         file('libs/projectA-1.2.jar').assertIsCopyOf(projectA2.jarFile)
         file('libs/projectB-2.2.jar').assertIsCopyOf(projectB2.jarFile)
+    }
+
+
+    def "determines latest version with jar only"() {
+        server.start()
+        def repo = ivyRepo()
+
+        given:
+        buildFile << """
+repositories {
+  ivy {
+      url "http://localhost:${server.port}"
+  }
+}
+
+configurations { compile }
+
+dependencies {
+  compile group: "group", name: "projectA", version: "1.+"
+}
+
+task retrieve(type: Sync) {
+  from configurations.compile
+  into 'libs'
+}
+"""
+
+        when: "Version 1.1 is published"
+        def projectA11 = repo.module("group", "projectA", "1.1").publish()
+        def projectA12 = repo.module("group", "projectA", "1.2").publish()
+        repo.module("group", "projectA", "2.0").publish()
+
+        and: "Server handles requests"
+        server.expectGetDirectoryListing("/${projectA12.organisation}/${projectA12.module}/", projectA12.moduleDir.parentFile)
+        server.expectGetMissing("/${projectA12.organisation}/${projectA12.module}/${projectA12.revision}/ivy-${projectA12.revision}.xml")
+        server.expectGetMissing("/${projectA11.organisation}/${projectA11.module}/${projectA11.revision}/ivy-${projectA11.revision}.xml")
+
+        // TODO:DAZ Should not list twice
+        server.expectGetDirectoryListing("/${projectA12.organisation}/${projectA12.module}/", projectA12.moduleDir.parentFile)
+        server.expectHead("/${projectA12.organisation}/${projectA12.module}/${projectA12.revision}/${projectA12.module}-${projectA12.revision}.jar", projectA12.jarFile)
+        server.expectGet("/${projectA12.organisation}/${projectA12.module}/${projectA12.revision}/${projectA12.module}-${projectA12.revision}.jar", projectA12.jarFile)
+
+        and:
+        run 'retrieve'
+
+        then: "Version 1.2 is used"
+        file('libs').assertHasDescendants('projectA-1.2.jar')
+    }
+
+    def "uses latest version with correct status for latest.release and latest.milestone"() {
+        server.start()
+        def repo = ivyRepo()
+
+        given:
+        buildFile << """
+repositories {
+    ivy {
+        url "http://localhost:${server.port}/repo"
+    }
+}
+
+configurations {
+    release
+    milestone
+}
+
+configurations.all {
+    resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
+}
+
+dependencies {
+    release group: "group", name: "projectA", version: "latest.release"
+    milestone group: "group", name: "projectA", version: "latest.milestone"
+}
+
+task retrieve(dependsOn: ['retrieveRelease', 'retrieveMilestone'])
+
+task retrieveRelease(type: Sync) {
+    from configurations.release
+    into 'release'
+}
+
+task retrieveMilestone(type: Sync) {
+    from configurations.milestone
+    into 'milestone'
+}
+"""
+
+        when: "Versions are published"
+        repo.module("group", "projectA", "1.0").withStatus('release').publish()
+        repo.module('group', 'projectA', '1.1').withStatus('milestone').publish()
+        repo.module('group', 'projectA', '1.2').withStatus('integration').publish()
+        repo.module("group", "projectA", "2.0").withStatus('release').publish()
+        repo.module('group', 'projectA', '2.1').withStatus('milestone').publish()
+        repo.module('group', 'projectA', '2.2').withStatus('integration').publish()
+
+        and: "Server handles requests"
+        server.allowGet('/repo', repo.rootDir)
+
+        and:
+        run 'retrieve'
+
+        then:
+        file('release').assertHasDescendants('projectA-2.0.jar')
+        file('milestone').assertHasDescendants('projectA-2.1.jar')
     }
 
     def "checks new repositories before returning any cached value"() {
@@ -357,262 +451,5 @@ task retrieve(type: Sync) {
         server.expectGetDirectoryListing("${prefix}/${module.organisation}/${module.module}/", module.moduleDir.parentFile)
         server.expectGet("${prefix}/${module.organisation}/${module.module}/${module.revision}/ivy-${module.revision}.xml", module.ivyFile)
         server.expectGet("${prefix}/${module.organisation}/${module.module}/${module.revision}/${module.module}-${module.revision}.jar", module.jarFile)
-    }
-
-    def "detects changed module descriptor when flagged as changing"() {
-        server.start()
-
-        given:
-        buildFile << """
-repositories {
-    ivy { url "http://localhost:${server.port}/repo" }
-}
-
-configurations { compile }
-
-configurations.all {
-    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-}
-
-dependencies {
-    compile group: "group", name: "projectA", version: "1.1", changing: true
-}
-
-task retrieve(type: Copy) {
-    into 'build'
-    from configurations.compile
-}
-"""
-
-        when: "Version 1.1 is published"
-        def module = ivyRepo().module("group", "projectA", "1.1")
-        module.publish()
-
-        and: "Server handles requests"
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-
-        and: "We request 1.1 (changing)"
-        run 'retrieve'
-
-        then: "Version 1.1 jar is downloaded"
-        file('build').assertHasDescendants('projectA-1.1.jar')
-
-        when: "Module meta-data is changed (new artifact)"
-        module.artifact([name: 'other'])
-        module.dependsOn("group", "projectB", "2.0")
-        module.publish()
-        def moduleB = ivyRepo().module("group", "projectB", "2.0")
-        moduleB.publish();
-
-        and: "Server handles requests"
-        server.resetExpectations()
-        // Server will be hit to get updated versions
-        server.expectGetMissing('/repo/group/projectA/1.1/ivy-1.1.xml.sha1')
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGetMissing('/repo/group/projectA/1.1/projectA-1.1.jar.sha1')
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-        server.expectGet('/repo/group/projectA/1.1/other-1.1.jar', module.moduleDir.file('other-1.1.jar'))
-        server.expectGet('/repo/group/projectB/2.0/ivy-2.0.xml', moduleB.ivyFile)
-        server.expectGet('/repo/group/projectB/2.0/projectB-2.0.jar', moduleB.jarFile)
-
-        and: "We request 1.1 again"
-        run 'retrieve'
-
-        then: "We get all artifacts, including the new ones"
-        file('build').assertHasDescendants('projectA-1.1.jar', 'other-1.1.jar', 'projectB-2.0.jar')
-    }
-
-    def "can mark a module as changing after first retrieval"() {
-        server.start()
-
-        given:
-        buildFile << """
-def isChanging = project.hasProperty('isChanging') ? true : false
-repositories {
-    ivy { url "http://localhost:${server.port}/repo" }
-}
-
-configurations { compile }
-configurations.compile.resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-
-dependencies {
-    compile group: "group", name: "projectA", version: "1.1", changing: isChanging
-}
-
-task retrieve(type: Copy) {
-    into 'build'
-    from configurations.compile
-}
-"""
-        and:
-        def module = ivyRepo().module("group", "projectA", "1.1")
-        module.publish()
-        server.allowGet('/repo', ivyRepo().rootDir)
-
-        when: 'original retrieve'
-        run 'retrieve'
-
-        then:
-        def jarSnapshot = file('build/projectA-1.1.jar').snapshot()
-
-        when:
-        waitOneSecondSoThatPublicationDateWillHaveChanged()
-        module.publishWithChangedContent()
-
-        and:
-        executer.withArguments('-PisChanging')
-        run 'retrieve'
-
-        then:
-        file('build/projectA-1.1.jar').assertHasChangedSince(jarSnapshot)
-    }
-
-    def "detects changed artifact when flagged as changing"() {
-        server.start()
-
-        given:
-        buildFile << """
-repositories {
-    ivy { url "http://localhost:${server.port}/repo" }
-}
-
-configurations { compile }
-
-configurations.all {
-    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-}
-
-dependencies {
-    compile group: "group", name: "projectA", version: "1.1", changing: true
-}
-
-task retrieve(type: Copy) {
-    into 'build'
-    from configurations.compile
-}
-"""
-
-        and:
-        def module = ivyRepo().module("group", "projectA", "1.1")
-        module.publish()
-
-        when:
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-
-        run 'retrieve'
-
-        then:
-        def jarFile = file('build/projectA-1.1.jar')
-        jarFile.assertIsCopyOf(module.jarFile)
-        def snapshot = jarFile.snapshot()
-
-        when:
-        waitOneSecondSoThatPublicationDateWillHaveChanged();
-        module.publishWithChangedContent()
-
-        server.resetExpectations()
-        // Server will be hit to get updated versions
-        server.expectGetMissing('/repo/group/projectA/1.1/ivy-1.1.xml.sha1')
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-
-        run 'retrieve'
-
-        then:
-        def changedJarFile = file('build/projectA-1.1.jar')
-        changedJarFile.assertHasChangedSince(snapshot)
-        changedJarFile.assertIsCopyOf(module.jarFile)
-
-    }
-
-    def "caches changing module descriptor and artifacts until cache expiry"() {
-        server.start()
-
-        given:
-        buildFile << """
-repositories {
-    ivy { url "http://localhost:${server.port}/repo" }
-}
-
-configurations { compile }
-
-
-if (project.hasProperty('noDynamicRevisionCache')) {
-    configurations.all {
-        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-    }
-}
-
-dependencies {
-    compile group: "group", name: "projectA", version: "1.1", changing: true
-}
-
-task retrieve(type: Copy) {
-    into 'build'
-    from configurations.compile
-}
-"""
-
-        when: "Version 1.1 is published"
-        def module = ivyRepo().module("group", "projectA", "1.1")
-        module.publish()
-
-        and: "Server handles requests"
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-
-        and: "We request 1.1 (changing)"
-        run 'retrieve'
-
-        then: "Version 1.1 jar is downloaded"
-        file('build').assertHasDescendants('projectA-1.1.jar')
-        def jarFile = file('build/projectA-1.1.jar')
-        jarFile.assertIsCopyOf(module.jarFile)
-        def snapshot = jarFile.snapshot()
-
-        when: "Module meta-data is changed and artifacts are modified"
-        module.artifact([name: 'other'])
-        waitOneSecondSoThatPublicationDateWillHaveChanged()
-        module.publishWithChangedContent()
-
-        and: "We request 1.1 (changing), with module meta-data cached. No server requests."
-        run 'retrieve'
-
-        then: "Original module meta-data is used"
-        file('build').assertHasDescendants('projectA-1.1.jar')
-
-        // and: "Original artifacts are used"
-        file('build').assertHasDescendants('projectA-1.1.jar')
-        jarFile.assertHasNotChangedSince(snapshot)
-
-        when: "Server handles requests"
-        server.resetExpectations()
-        // Server will be hit to get updated versions
-        server.expectGetMissing('/repo/group/projectA/1.1/ivy-1.1.xml.sha1')
-        server.expectGet('/repo/group/projectA/1.1/ivy-1.1.xml', module.ivyFile)
-        server.expectGet('/repo/group/projectA/1.1/projectA-1.1.jar', module.jarFile)
-        server.expectGet('/repo/group/projectA/1.1/other-1.1.jar', module.moduleDir.file('other-1.1.jar'))
-
-        and: "We request 1.1 (changing) again, with zero expiry for dynamic revision cache"
-        executer.withArguments("-PnoDynamicRevisionCache")
-        run 'retrieve'
-
-        then: "We get new artifacts based on the new meta-data"
-        file('build').assertHasDescendants('projectA-1.1.jar', 'other-1.1.jar')
-        jarFile.assertHasChangedSince(snapshot)
-        jarFile.assertIsCopyOf(module.jarFile)
-    }
-
-    private def waitOneSecondSoThatPublicationDateWillHaveChanged() {
-        // TODO:DAZ Remove this
-        // Ivy checks the publication date to see if it's _really_ changed, won't delete the artifacts if not.
-        // So wait a second to ensure the date will be different.
-        Thread.sleep(1000)
-    }
-
-    IvyRepository ivyRepo(def dir = 'ivy-repo') {
-        return new IvyRepository(distribution.testFile(dir))
     }
 }

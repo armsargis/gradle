@@ -16,7 +16,7 @@
 
 package org.gradle.cache.internal
 
-import org.gradle.api.internal.Factory
+import org.gradle.internal.Factory
 import org.gradle.cache.internal.FileLockManager.LockMode
 import org.gradle.util.TemporaryFolder
 import org.gradle.util.TestFile
@@ -25,6 +25,7 @@ import org.gradle.util.TestPrecondition
 
 import org.junit.Rule
 import spock.lang.Specification
+import spock.lang.Unroll
 
 /**
  * @author: Szczepan Faber, created at: 8/30/11
@@ -37,6 +38,39 @@ class DefaultFileLockManagerTest extends Specification {
     def setup() {
         metaDataProvider.processIdentifier >> '123'
         metaDataProvider.processDisplayName >> 'process'
+    }
+
+    @Unroll "#operation throws integrity exception when not cleanly unlocked file"() {
+        given:
+        def file = unlockUncleanly("file.txt")
+        
+        and:
+        def lock = lock(LockMode.Shared, file)
+        
+        when:
+        lock."$operation"(arg)
+        
+        then:
+        thrown FileIntegrityViolationException
+
+        where:
+        operation      | arg
+        "readFile" | {} as Factory
+        "updateFile"  | {} as Runnable
+    }
+
+    def "writeFile does not throw integrity exception when not cleanly unlocked file"() {
+        given:
+        def file = unlockUncleanly("file.txt")
+
+        and:
+        def lock = lock(LockMode.Shared, file)
+
+        when:
+        lock.writeFile {  }
+
+        then:
+        notThrown FileIntegrityViolationException
     }
 
     def "can lock a file"() {
@@ -90,7 +124,7 @@ class DefaultFileLockManagerTest extends Specification {
     def "existing lock is unlocked cleanly after writeToFile() has been called"() {
         when:
         def lock = manager.lock(tmpDir.createFile("file.txt"), LockMode.Exclusive, "lock")
-        lock.writeToFile({} as Runnable)
+        lock.updateFile({} as Runnable)
 
         then:
         lock.unlockedCleanly
@@ -111,7 +145,7 @@ class DefaultFileLockManagerTest extends Specification {
 
         when:
         def lock = manager.lock(tmpDir.createFile("file.txt"), LockMode.Exclusive, "lock")
-        lock.writeToFile({throw failure} as Runnable)
+        lock.updateFile({throw failure} as Runnable)
 
         then:
         RuntimeException e = thrown()
@@ -177,7 +211,7 @@ class DefaultFileLockManagerTest extends Specification {
         lock.close()
 
         when:
-        lock.readFromFile({} as Factory)
+        lock.readFile({} as Factory)
 
         then:
         thrown(IllegalStateException)
@@ -189,7 +223,7 @@ class DefaultFileLockManagerTest extends Specification {
         lock.close()
 
         when:
-        lock.writeToFile({} as Runnable)
+        lock.updateFile({} as Runnable)
 
         then:
         thrown(IllegalStateException)
@@ -340,7 +374,13 @@ class DefaultFileLockManagerTest extends Specification {
         }
     }
 
-    private FileLock lock(LockMode lockMode) {
-        return manager.lock(tmpDir.file("state.bin"), lockMode, "foo")
+    private FileLock lock(LockMode lockMode, File file = tmpDir.file("state.bin")) {
+        return manager.lock(file, lockMode, "foo")
+    }
+
+    private File unlockUncleanly(String name) {
+        def file = tmpDir.createFile(name)
+        file.text = "abc"
+        file
     }
 }

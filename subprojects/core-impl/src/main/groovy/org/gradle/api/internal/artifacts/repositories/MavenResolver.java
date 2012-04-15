@@ -19,6 +19,7 @@ import org.apache.ivy.core.IvyPatternHelper;
 import org.apache.ivy.core.module.descriptor.Artifact;
 import org.apache.ivy.core.module.descriptor.DefaultArtifact;
 import org.apache.ivy.core.module.descriptor.DependencyDescriptor;
+import org.apache.ivy.core.module.id.ArtifactRevisionId;
 import org.apache.ivy.core.module.id.ModuleRevisionId;
 import org.apache.ivy.core.resolve.ResolveData;
 import org.apache.ivy.plugins.matcher.PatternMatcher;
@@ -29,6 +30,8 @@ import org.apache.ivy.util.ContextualSAXHandler;
 import org.apache.ivy.util.Message;
 import org.apache.ivy.util.XMLHelper;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
+import org.gradle.api.internal.externalresource.cached.CachedExternalResourceIndex;
+import org.gradle.api.internal.externalresource.local.LocallyAvailableResourceFinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
@@ -39,7 +42,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.util.*;
 
-public class MavenResolver extends ResourceCollectionResolver implements PatternBasedResolver {
+public class MavenResolver extends ExternalResourceResolver implements PatternBasedResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(MavenResolver.class);
 
     private static final String M2_PER_MODULE_PATTERN = "[revision]/[artifact]-[revision](-[classifier]).[ext]";
@@ -52,8 +55,10 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
     private boolean usepoms = true;
     private boolean useMavenMetadata = true;
 
-    public MavenResolver(String name, URI rootUri, RepositoryTransport transport) {
-        super(name, transport.getRepositoryAccessor());
+    public MavenResolver(String name, URI rootUri, RepositoryTransport transport,
+                         LocallyAvailableResourceFinder<ArtifactRevisionId> locallyAvailableResourceFinder,
+                         CachedExternalResourceIndex<String> cachedExternalResourceIndex) {
+        super(name, transport.getRepository(), locallyAvailableResourceFinder, cachedExternalResourceIndex);
         transport.configureCacheManager(this);
 
         this.transport = transport;
@@ -101,16 +106,12 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
         setArtifactPatterns(artifactPatterns);
     }
 
-    private String getMavenMetadataPattern() {
-        return root + "[organisation]/[module]/[revision]/maven-metadata.xml";
-    }
-
     public ResolvedResource findIvyFileRef(DependencyDescriptor dd, ResolveData data) {
         if (shouldResolveDependencyDescriptors()) {
             ModuleRevisionId moduleRevisionId = convertM2IdForResourceSearch(dd.getDependencyRevisionId());
 
             if (moduleRevisionId.getRevision().endsWith("SNAPSHOT")) {
-                ResolvedResource resolvedResource = findSnapshotDescriptor(dd, data, moduleRevisionId);
+                ResolvedResource resolvedResource = findSnapshotDescriptor(dd, data, moduleRevisionId, true);
                 if (resolvedResource != null) {
                     return resolvedResource;
                 }
@@ -118,13 +119,13 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
 
             Artifact pomArtifact = DefaultArtifact.newPomArtifact(moduleRevisionId, data.getDate());
             ResourceMDParser parser = getRMDParser(dd, data);
-            return findResourceUsingPatterns(moduleRevisionId, getIvyPatterns(), pomArtifact, parser, data.getDate());
+            return findResourceUsingPatterns(moduleRevisionId, getIvyPatterns(), pomArtifact, parser, data.getDate(), true);
         }
 
         return null;
     }
 
-    private ResolvedResource findSnapshotDescriptor(DependencyDescriptor dd, ResolveData data, ModuleRevisionId moduleRevisionId) {
+    private ResolvedResource findSnapshotDescriptor(DependencyDescriptor dd, ResolveData data, ModuleRevisionId moduleRevisionId, boolean forDownload) {
         String rev = findUniqueSnapshotVersion(moduleRevisionId);
         if (rev != null) {
             // here it would be nice to be able to store the resolved snapshot version, to avoid
@@ -134,43 +135,41 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
 
             // replace the revision token in file name with the resolved revision
             String pattern = getWholePattern().replaceFirst("\\-\\[revision\\]", "-" + rev);
-            return findResourceUsingPattern(moduleRevisionId, pattern,
-                    DefaultArtifact.newPomArtifact(
-                            moduleRevisionId, data.getDate()), getRMDParser(dd, data), data.getDate());
+            Artifact pomArtifact = DefaultArtifact.newPomArtifact(moduleRevisionId, data.getDate());
+            return findResourceUsingPattern(moduleRevisionId, pattern, pomArtifact, getRMDParser(dd, data), data.getDate(), forDownload);
         }
         return null;
     }
 
-    protected ResolvedResource findArtifactRef(Artifact artifact, Date date) {
+    protected ResolvedResource getArtifactRef(Artifact artifact, Date date, boolean forDownload) {
         ModuleRevisionId moduleRevisionId = artifact.getModuleRevisionId();
         if (isM2compatible()) {
             moduleRevisionId = convertM2IdForResourceSearch(moduleRevisionId);
         }
 
         if (moduleRevisionId.getRevision().endsWith("SNAPSHOT")) {
-            ResolvedResource resolvedResource = findSnapshotArtifact(artifact, date, moduleRevisionId);
+            ResolvedResource resolvedResource = findSnapshotArtifact(artifact, date, moduleRevisionId, forDownload);
             if (resolvedResource != null) {
                 return resolvedResource;
             }
         }
         ResourceMDParser parser = getDefaultRMDParser(artifact.getModuleRevisionId().getModuleId());
-        return findResourceUsingPatterns(moduleRevisionId, getArtifactPatterns(), artifact, parser, date);
+        return findResourceUsingPatterns(moduleRevisionId, getArtifactPatterns(), artifact, parser, date, forDownload);
     }
 
-    private ResolvedResource findSnapshotArtifact(Artifact artifact, Date date, ModuleRevisionId moduleRevisionId) {
+    private ResolvedResource findSnapshotArtifact(Artifact artifact, Date date, ModuleRevisionId moduleRevisionId, boolean forDownload) {
         String rev = findUniqueSnapshotVersion(moduleRevisionId);
         if (rev != null) {
             // replace the revision token in file name with the resolved revision
             // TODO:DAZ We're not using all available artifact patterns here, only the "main" pattern. This means that snapshot artifacts will not be resolved in additional artifact urls.
             String pattern = getWholePattern().replaceFirst("\\-\\[revision\\]", "-" + rev);
-            return findResourceUsingPattern(moduleRevisionId, pattern, artifact,
-                    getDefaultRMDParser(artifact.getModuleRevisionId().getModuleId()), date);
+            return findResourceUsingPattern(moduleRevisionId, pattern, artifact, getDefaultRMDParser(artifact.getModuleRevisionId().getModuleId()), date, forDownload);
         }
         return null;
     }
 
     private String findUniqueSnapshotVersion(ModuleRevisionId moduleRevisionId) {
-        String metadataLocation = IvyPatternHelper.substitute(getMavenMetadataPattern(), moduleRevisionId);
+        String metadataLocation = IvyPatternHelper.substitute(root + "[organisation]/[module]/[revision]/maven-metadata.xml", moduleRevisionId);
         MavenMetadata mavenMetadata = parseMavenMetadata(metadataLocation);
 
         if (mavenMetadata.timestamp != null) {
@@ -183,44 +182,13 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
         return null;
     }
 
-    protected String getModuleDescriptorExtension() {
-        return "pom";
-    }
-
-    protected ResolvedResource[] listResources(ModuleRevisionId moduleRevisionId, String pattern, Artifact artifact) {
+    @Override
+    protected String[] listVersions(ModuleRevisionId moduleRevisionId, String pattern, Artifact artifact) {
         List<String> revisions = listRevisionsWithMavenMetadata(moduleRevisionId.getModuleId().getAttributes());
         if (revisions != null) {
-            LOGGER.debug("Found revisions: {}", revisions);
-            List<ResolvedResource> resources = new ArrayList<ResolvedResource>();
-            for (String revision : revisions) {
-                String resolvedPattern = IvyPatternHelper.substitute(
-                        pattern, ModuleRevisionId.newInstance(moduleRevisionId, revision), artifact);
-                try {
-                    Resource res = getResource(resolvedPattern, artifact);
-                    if ((res != null) && res.exists()) {
-                        resources.add(new ResolvedResource(res, revision));
-                    }
-                } catch (IOException e) {
-                    LOGGER.warn("impossible to get resource from name listed by maven-metadata.xml: " + resources, e);
-                }
-            }
-            return resources.toArray(new ResolvedResource[resources.size()]);
-        } else {
-            // maven metadata not available or something went wrong,
-            // use default listing capability
-            return super.listResources(moduleRevisionId, pattern, artifact);
+            return revisions.toArray(new String[revisions.size()]);
         }
-    }
-
-    protected void findTokenValues(Collection names, List patterns, Map tokenValues, String token) {
-        if (IvyPatternHelper.REVISION_KEY.equals(token)) {
-            List<String> revisions = listRevisionsWithMavenMetadata(tokenValues);
-            if (revisions != null) {
-                names.addAll(filterNames(revisions));
-                return;
-            }
-        }
-        super.findTokenValues(names, patterns, tokenValues, token);
+        return super.listVersions(moduleRevisionId, pattern, artifact);
     }
 
     private List<String> listRevisionsWithMavenMetadata(Map tokenValues) {
@@ -242,34 +210,10 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
     private void parseMavenMetadataInto(String metadataLocation, final MavenMetadata mavenMetadata) {
         try {
             Resource metadata = getResource(metadataLocation);
-            if (metadata.exists()) {
-                LOGGER.debug("parsing maven-metadata: {}", metadata);
-                InputStream metadataStream = metadata.openStream();
-                try {
-                    XMLHelper.parse(metadataStream, null, new ContextualSAXHandler() {
-                        public void endElement(String uri, String localName, String qName)
-                                throws SAXException {
-                            if ("metadata/versioning/snapshot/timestamp".equals(getContext())) {
-                                mavenMetadata.timestamp = getText();
-                            }
-                            if ("metadata/versioning/snapshot/buildNumber".equals(getContext())) {
-                                mavenMetadata.buildNumber = getText();
-                            }
-                            if ("metadata/versioning/versions/version".equals(getContext())) {
-                                mavenMetadata.versions.add(getText().trim());
-                            }
-                            super.endElement(uri, localName, qName);
-                        }
-                    }, null);
-                } finally {
-                    try {
-                        metadataStream.close();
-                    } catch (IOException e) {
-                        // ignored
-                    }
-                }
-            } else {
-                LOGGER.debug("maven-metadata not available: {}", metadata);
+            try {
+                parseMavenMetadataInto(metadata, mavenMetadata);
+            } finally {
+                discardResource(metadata);
             }
         } catch (IOException e) {
             LOGGER.warn("impossible to access maven metadata file, ignored.", e);
@@ -277,6 +221,30 @@ public class MavenResolver extends ResourceCollectionResolver implements Pattern
             LOGGER.warn("impossible to parse maven metadata file, ignored.", e);
         } catch (ParserConfigurationException e) {
             LOGGER.warn("impossible to parse maven metadata file, ignored.", e);
+        }
+    }
+
+    private void parseMavenMetadataInto(Resource metadataResource, final MavenMetadata mavenMetadata) throws IOException, SAXException, ParserConfigurationException {
+        if (metadataResource.exists()) {
+            LOGGER.debug("parsing maven-metadata: {}", metadataResource);
+            InputStream metadataStream = metadataResource.openStream();
+            XMLHelper.parse(metadataStream, null, new ContextualSAXHandler() {
+                public void endElement(String uri, String localName, String qName)
+                        throws SAXException {
+                    if ("metadata/versioning/snapshot/timestamp".equals(getContext())) {
+                        mavenMetadata.timestamp = getText();
+                    }
+                    if ("metadata/versioning/snapshot/buildNumber".equals(getContext())) {
+                        mavenMetadata.buildNumber = getText();
+                    }
+                    if ("metadata/versioning/versions/version".equals(getContext())) {
+                        mavenMetadata.versions.add(getText().trim());
+                    }
+                    super.endElement(uri, localName, qName);
+                }
+            }, null);
+        } else {
+            LOGGER.debug("maven-metadata not available: {}", metadataResource);
         }
     }
 

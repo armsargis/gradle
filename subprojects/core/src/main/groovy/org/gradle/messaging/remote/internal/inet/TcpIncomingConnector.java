@@ -17,8 +17,10 @@
 package org.gradle.messaging.remote.internal.inet;
 
 import org.gradle.api.Action;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.UncheckedException;
+import org.gradle.internal.id.IdGenerator;
 import org.gradle.messaging.concurrent.AsyncStoppable;
-import org.gradle.messaging.concurrent.CompositeStoppable;
 import org.gradle.messaging.concurrent.ExecutorFactory;
 import org.gradle.messaging.concurrent.StoppableExecutor;
 import org.gradle.messaging.remote.Address;
@@ -26,8 +28,6 @@ import org.gradle.messaging.remote.ConnectEvent;
 import org.gradle.messaging.remote.internal.Connection;
 import org.gradle.messaging.remote.internal.IncomingConnector;
 import org.gradle.messaging.remote.internal.MessageSerializer;
-import org.gradle.util.IdGenerator;
-import org.gradle.util.UncheckedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,7 +66,7 @@ public class TcpIncomingConnector<T> implements IncomingConnector<T>, AsyncStopp
             serverSocket.socket().bind(new InetSocketAddress(0));
             localPort = serverSocket.socket().getLocalPort();
         } catch (Exception e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
 
         Object id = idGenerator.generateId();
@@ -79,7 +79,7 @@ public class TcpIncomingConnector<T> implements IncomingConnector<T>, AsyncStopp
     }
 
     public void requestStop() {
-        new CompositeStoppable().addCloseables(serverSockets).stop();
+        new CompositeStoppable().add(serverSockets).stop();
     }
 
     public void stop() {

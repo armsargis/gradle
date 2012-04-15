@@ -15,10 +15,11 @@
  */
 package org.gradle.integtests.fixtures
 
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import junit.framework.AssertionFailedError
+
 import org.gradle.util.TestFile
+import org.gradle.util.hash.HashUtil
 
 /**
  * A fixture for dealing with Maven repositories.
@@ -93,6 +94,10 @@ class MavenModule {
         return this;
     }
 
+    File getMavenMetaDataFile() {
+        moduleDir.file("maven-metadata.xml")
+    }
+
     /**
      * Asserts that exactly the given artifacts have been deployed, along with their checksum files
      */
@@ -120,6 +125,10 @@ class MavenModule {
 
     TestFile getPomFile() {
         return moduleDir.file("$artifactId-${publishArtifactVersion}.pom")
+    }
+    
+    TestFile getMetaDataFile() {
+        moduleDir.file("maven-metadata.xml")
     }
 
     TestFile getArtifactFile() {
@@ -187,10 +196,11 @@ class MavenModule {
   <groupId>$groupId</groupId>
   <artifactId>$artifactId</artifactId>
   <packaging>$type</packaging>
-  <version>$version</version>"""
+  <version>$version</version>
+  <description>Published on $publishTimestamp</description>"""
 
         if (parentPomSection) {
-           pomFile << "\n$parentPomSection\n"
+            pomFile << "\n$parentPomSection\n"
         }
 
         dependencies.each { dependency ->
@@ -227,28 +237,81 @@ class MavenModule {
     private Map<String, Object> toArtifact(Map<String, ?> options) {
         options = new HashMap<String, Object>(options)
         def artifact = [type: options.remove('type') ?: type, classifier: options.remove('classifier') ?: null]
-        assert options.isEmpty() : "Unknown options : ${options.keySet()}"
+        assert options.isEmpty(): "Unknown options : ${options.keySet()}"
         return artifact
     }
 
     private void createHashFiles(File file) {
-        sha1File(file).text = getHash(file, "SHA1")
-        md5File(file).text = getHash(file, "MD5")
-    }
-
-    private String getHash(File file, String algorithm) {
-        MessageDigest messageDigest = MessageDigest.getInstance(algorithm)
-        messageDigest.update(file.bytes)
-        return new BigInteger(1, messageDigest.digest()).toString(16)
+        sha1File(file)
+        md5File(file)
     }
 
     TestFile sha1File(File file) {
-        return moduleDir.file("${file.name}.sha1")
+        hashFile(file, "sha1");
     }
-    
+
     TestFile md5File(File file) {
-        return moduleDir.file("${file.name}.md5")
+        hashFile(file, "md5")
     }
+
+    private TestFile hashFile(File file, String algorithm) {
+        def hashFile = moduleDir.file("${file.name}.${algorithm}")
+        hashFile.text = HashUtil.createHash(file, algorithm.toUpperCase()).asHexString()
+        return hashFile
+    }
+
+    public expectMetaDataGet(HttpServer server, prefix = null) {
+        server.expectGet(metadataPath(prefix), metaDataFile)
+    }
+
+    public metadataPath(prefix = null) {
+        path(prefix, "maven-metadata.xml")
+    }
+
+    public expectPomHead(HttpServer server, prefix = null) {
+        server.expectHead(pomPath(prefix), pomFile)
+    }
+
+    public expectPomGet(HttpServer server, prefix = null) {
+        server.expectGet(pomPath(prefix), pomFile)
+    }
+
+    public pomPath(prefix = null) {
+        path(prefix, pomFile.name)
+    }
+
+    public expectPomSha1Get(HttpServer server, prefix = null) {
+        server.expectGet(pomSha1Path(prefix), sha1File(pomFile))
+    }
+
+    public pomSha1Path(prefix = null) {
+        pomPath(prefix) + ".sha1"
+    }
+
+    public expectArtifactHead(HttpServer server, prefix = null) {
+        server.expectHead(artifactPath(prefix), artifactFile)
+    }
+
+    public expectArtifactGet(HttpServer server, prefix = null) {
+        server.expectGet(artifactPath(prefix), pomFile)
+    }
+
+    public artifactPath(prefix = null) {
+        path(prefix, artifactFile.name)
+    }
+
+    public expectArtifactSha1Get(HttpServer server, prefix = null) {
+        server.expectGet(artifactSha1Path(prefix), sha1File(artifactFile))
+    }
+
+    public artifactSha1Path(prefix = null) {
+        artifactPath(prefix) + ".sha1"
+    }
+
+    public path(prefix = null, String filename) {
+        "${prefix == null ? "" : prefix}/${groupId.replace('.', '/')}/${artifactId}/${version}/${filename}"
+    }
+
 }
 
 class MavenPom {

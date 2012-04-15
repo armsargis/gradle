@@ -1,3 +1,5 @@
+apply from: "$rootDir/gradle/classycle.gradle"
+
 configurations {
     startScriptGenerator
 }
@@ -54,7 +56,7 @@ class StartScriptGenerator extends DefaultTask {
     def generate() {
         logging.captureStandardOutput(LogLevel.INFO)
         def factory = services.get(ClassLoaderFactory)
-        def classLoader = factory.createIsolatedClassLoader(classpath.collect { it.toURI().toURL() })
+        def classLoader = factory.createIsolatedClassLoader(classpath.collect { it.toURI() })
         def generator = classLoader.loadClass('org.gradle.api.internal.plugins.StartScriptGenerator').newInstance()
         generator.applicationName = 'Gradle'
         generator.optsEnvironmentVar = 'GRADLE_OPTS'
@@ -66,4 +68,11 @@ class StartScriptGenerator extends DefaultTask {
         generator.generateUnixScript(shellScript)
         generator.generateWindowsScript(batchFile)
     }
+}
+
+daemonIntegTest {
+    //those tests are always using the daemon, they use exclusive daemons and they are a part of a regular check-in build anyway.
+    //since they are using exclusive daemons they don't contribute to the daemonIntegTest stress/load test.
+    //excluding to avoid unnecessary re-running and stealing resources.
+    exclude "org/gradle/launcher/daemon/**/*"
 }

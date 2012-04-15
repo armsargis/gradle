@@ -15,9 +15,10 @@
  */
 package org.gradle.messaging.remote.internal;
 
-import org.gradle.messaging.concurrent.CompositeStoppable;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.Stoppable;
+import org.gradle.internal.id.IdGenerator;
 import org.gradle.messaging.concurrent.ExecutorFactory;
-import org.gradle.messaging.concurrent.Stoppable;
 import org.gradle.messaging.concurrent.StoppableExecutor;
 import org.gradle.messaging.dispatch.DiscardingFailureHandler;
 import org.gradle.messaging.dispatch.Dispatch;
@@ -27,7 +28,6 @@ import org.gradle.messaging.remote.Address;
 import org.gradle.messaging.remote.internal.protocol.ChannelAvailable;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryMessage;
 import org.gradle.messaging.remote.internal.protocol.LookupRequest;
-import org.gradle.util.IdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,14 +75,14 @@ public class DefaultOutgoingBroadcast implements OutgoingBroadcast, Stoppable {
         } finally {
             lock.unlock();
         }
-        return new ProxyDispatchAdapter<T>(type, hub.addMulticastOutgoing(channelKey)).getSource();
+        return new ProxyDispatchAdapter<T>(hub.addMulticastOutgoing(channelKey), type).getSource();
     }
 
     public void stop() {
         CompositeStoppable stoppable = new CompositeStoppable();
         lock.lock();
         try {
-            stoppable.add(hub).add(discoveryBroadcast).add(executor);
+            stoppable.add(hub, discoveryBroadcast, executor);
         } finally {
             connections.clear();
             lock.unlock();

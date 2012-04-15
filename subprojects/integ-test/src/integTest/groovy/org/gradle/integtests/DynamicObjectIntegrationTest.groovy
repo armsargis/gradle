@@ -20,6 +20,7 @@ import org.gradle.integtests.fixtures.GradleDistributionExecuter
 import org.gradle.util.TestFile
 import org.junit.Rule
 import org.junit.Test
+import spock.lang.Issue
 
 class DynamicObjectIntegrationTest {
     @Rule public final GradleDistribution dist = new GradleDistribution()
@@ -30,16 +31,17 @@ class DynamicObjectIntegrationTest {
         TestFile testDir = dist.getTestDir();
         testDir.file("settings.gradle").writelns("include 'child'");
         testDir.file("build.gradle").writelns(
-                "rootProperty = 'root'",
-                "sharedProperty = 'ignore me'",
+                "ext.rootProperty = 'root'",
+                "ext.sharedProperty = 'ignore me'",
+                "ext.property = 'value'",
                 "convention.plugins.test = new ConventionBean()",
                 "task rootTask",
                 "task testTask",
                 "class ConventionBean { def getConventionProperty() { 'convention' } }"
         );
         testDir.file("child/build.gradle").writelns(
-                "childProperty = 'child'",
-                "sharedProperty = 'shared'",
+                "ext.childProperty = 'child'",
+                "ext.sharedProperty = 'shared'",
                 "task testTask << {",
                 "  new Reporter().checkProperties(project)",
                 "}",
@@ -60,6 +62,7 @@ class DynamicObjectIntegrationTest {
                 "    assert 'child' == object.childProperty",
                 "    assert 'shared' == object.sharedProperty",
                 "    assert 'convention' == object.conventionProperty",
+                "    assert 'value' == object.property",
                 "    assert ':child:testTask' == object.testTask.path",
                 "    try { object.rootTask; fail() } catch (MissingPropertyException e) { }",
                 "  }",
@@ -172,35 +175,35 @@ assert 'overridden value' == global
             class GroovyTask extends DefaultTask { }
 
             task defaultTask {
-                custom = 'value'
+                ext.custom = 'value'
             }
             task javaTask(type: Copy) {
-                custom = 'value'
+                ext.custom = 'value'
             }
             task groovyTask(type: GroovyTask) {
-                custom = 'value'
+                ext.custom = 'value'
             }
             configurations {
                 test {
-                    custom = 'value'
+                    ext.custom = 'value'
                 }
             }
             dependencies {
                 test('::name:') {
-                    custom = 'value';
+                    ext.custom = 'value';
                 }
                 test(module('::other')) {
-                    custom = 'value';
+                    ext.custom = 'value';
                 }
                 test(project(':')) {
-                    custom = 'value';
+                    ext.custom = 'value';
                 }
                 test(files('src')) {
-                    custom = 'value';
+                    ext.custom = 'value';
                 }
             }
             repositories {
-                custom = 'repository'
+                ext.custom = 'repository'
             }
             defaultTask.custom = 'another value'
             javaTask.custom = 'another value'
@@ -360,14 +363,39 @@ assert 'overridden value' == global
 
         executer.inDirectory(testDir).withTasks("test").run();
     }
-    
+
+    @Test
+    void canAddExtensionsToDynamicExtensions() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file('build.gradle') << '''
+            class Extension {
+                String name
+                Extension(String name) {
+                    this.name = name
+                }
+            }
+
+            project.extensions.create("l1", Extension, "l1")
+            project.l1.extensions.create("l2", Extension, "l2")
+            project.l1.l2.extensions.create("l3", Extension, "l3")
+
+            task test << {
+                assert project.l1.name == "l1"
+                assert project.l1.l2.name == "l2"
+                assert project.l1.l2.l3.name == "l3"
+            }
+        '''
+
+        executer.inDirectory(testDir).withTasks("test").run();
+    }
+
     @Test
     public void canInjectMethodsFromParentProject() {
         TestFile testDir = dist.getTestDir();
         testDir.file("settings.gradle").writelns("include 'child'");
         testDir.file("build.gradle").writelns(
                 "subprojects {",
-                "  injectedMethod = { project.name }",
+                "  ext.injectedMethod = { project.name }",
                 "}"
         );
         testDir.file("child/build.gradle").writelns(
@@ -377,5 +405,50 @@ assert 'overridden value' == global
         );
 
         executer.inDirectory(testDir).withTasks("testTask").run();
+    }
+    
+    @Test void canAddNewPropertiesViaTheAdhocNamespace() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file("build.gradle") << """
+            ext {
+                add "p1", 1
+            }
+            assert p1 == 1
+            p2 = 2
+            assert ext.p2 = 2
+            
+            task run << {
+                ext {
+                    add "p1", 1
+                }
+                assert p1 == 1
+                p2 = 2
+                assert ext.p2 = 2            
+            }        
+        """
+        
+        executer.withTasks("run")
+    }
+
+    @Issue("GRADLE-2163")
+    @Test void canDecorateBooleanPrimitiveProperties() {
+        TestFile testDir = dist.getTestDir();
+        testDir.file("build.gradle") << """
+            class CustomBean {
+                boolean b
+            }
+
+            // best way to decorate right now
+            extensions.create('bean', CustomBean)
+
+            task run << {
+                assert bean.b == false
+                bean.b.conventionMapping.map('b') { true }
+                assert bean.b == true
+            }
+        """
+
+        executer.withTasks("run")
+
     }
 }

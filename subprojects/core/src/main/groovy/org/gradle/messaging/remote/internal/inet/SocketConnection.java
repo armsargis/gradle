@@ -17,8 +17,8 @@
 package org.gradle.messaging.remote.internal.inet;
 
 import com.google.common.base.Objects;
-import org.gradle.api.UncheckedIOException;
-import org.gradle.messaging.concurrent.CompositeStoppable;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.UncheckedException;
 import org.gradle.messaging.remote.Address;
 import org.gradle.messaging.remote.internal.Connection;
 import org.gradle.messaging.remote.internal.MessageIOException;
@@ -34,8 +34,8 @@ import java.nio.channels.SocketChannel;
 
 public class SocketConnection<T> implements Connection<T> {
     private final SocketChannel socket;
-    private final Address localAddress;
-    private final Address remoteAddress;
+    private final SocketInetAddress localAddress;
+    private final SocketInetAddress remoteAddress;
     private final MessageSerializer<T> serializer;
     private final DataInputStream instr;
     private final DataOutputStream outstr;
@@ -50,7 +50,7 @@ public class SocketConnection<T> implements Connection<T> {
             outstr = new DataOutputStream(new SocketOutputStream(socket));
             instr = new DataInputStream(new SocketInputStream(socket));
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
         InetSocketAddress localSocketAddress = (InetSocketAddress) socket.socket().getLocalSocketAddress();
         localAddress = new SocketInetAddress(localSocketAddress.getAddress(), localSocketAddress.getPort());

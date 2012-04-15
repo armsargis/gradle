@@ -16,9 +16,9 @@
 package org.gradle.messaging.remote.internal;
 
 import org.gradle.api.Action;
-import org.gradle.messaging.concurrent.CompositeStoppable;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.Stoppable;
 import org.gradle.messaging.concurrent.ExecutorFactory;
-import org.gradle.messaging.concurrent.Stoppable;
 import org.gradle.messaging.concurrent.StoppableExecutor;
 import org.gradle.messaging.dispatch.DiscardingFailureHandler;
 import org.gradle.messaging.dispatch.MethodInvocation;
@@ -27,7 +27,7 @@ import org.gradle.messaging.remote.Address;
 import org.gradle.messaging.remote.ConnectEvent;
 import org.gradle.messaging.remote.internal.protocol.ChannelAvailable;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryMessage;
-import org.gradle.util.IdGenerator;
+import org.gradle.internal.id.IdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,9 +77,7 @@ public class DefaultIncomingBroadcast implements IncomingBroadcast, Stoppable {
     }
 
     public void stop() {
-        CompositeStoppable stoppable = new CompositeStoppable();
-        stoppable.add(protocolStack, hub, executor);
-        stoppable.stop();
+        new CompositeStoppable().add(protocolStack, hub, executor).stop();
     }
 
     private class IncomingConnectionAction implements Action<ConnectEvent<Connection<Message>>> {

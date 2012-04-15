@@ -16,26 +16,23 @@
 package org.gradle.build.docs.dsl.docbook
 
 import org.gradle.build.docs.XIncludeAwareXmlProvider
-
-import org.gradle.build.docs.dsl.model.ClassMetaData
-import org.w3c.dom.Document
-import org.gradle.build.docs.model.ClassMetaDataRepository
 import org.gradle.build.docs.dsl.TypeNameResolver
 import org.gradle.build.docs.dsl.model.ClassExtensionMetaData
+import org.gradle.build.docs.dsl.model.ClassMetaData
+import org.gradle.build.docs.model.ClassMetaDataRepository
+import org.w3c.dom.Document
 
 class DslDocModel {
     private final File classDocbookDir
     private final Document document
-    private final Iterable<File> classpath
     private final Map<String, ClassDoc> classes = [:]
     private final ClassMetaDataRepository<ClassMetaData> classMetaData
     private final Map<String, ClassExtensionMetaData> extensionMetaData
     private final JavadocConverter javadocConverter
 
-    DslDocModel(File classDocbookDir, Document document, Iterable<File> classpath, ClassMetaDataRepository<ClassMetaData> classMetaData, Map<String, ClassExtensionMetaData> extensionMetaData) {
+    DslDocModel(File classDocbookDir, Document document, ClassMetaDataRepository<ClassMetaData> classMetaData, Map<String, ClassExtensionMetaData> extensionMetaData) {
         this.classDocbookDir = classDocbookDir
         this.document = document
-        this.classpath = classpath
         this.classMetaData = classMetaData
         this.extensionMetaData = extensionMetaData
         javadocConverter = new JavadocConverter(document, new JavadocLinkConverter(document, new TypeNameResolver(classMetaData), new LinkRenderer(document, this), classMetaData))
@@ -71,12 +68,14 @@ class DslDocModel {
             if (!classFile.isFile()) {
                 throw new RuntimeException("Docbook source file not found for class '$className' in $classDocbookDir.")
             }
-            XIncludeAwareXmlProvider provider = new XIncludeAwareXmlProvider(classpath)
+            XIncludeAwareXmlProvider provider = new XIncludeAwareXmlProvider()
             def doc = new ClassDoc(className, provider.parse(classFile), document, classMetaData, extensionMetaData, this, javadocConverter)
             doc.mergeContent()
             return doc
+        } catch (ClassDocGenerationException e) {
+            throw e
         } catch (Exception e) {
-            throw new RuntimeException("Could not load the class documentation for class '$className'.", e)
+            throw new ClassDocGenerationException("Could not load the class documentation for class '$className'.", e)
         }
     }
 }

@@ -19,9 +19,9 @@ package org.gradle.tooling.model;
 /**
  * Described model element
  *
- * @since 1.0-rc-1
+ * @since 1.0-milestone-5
  */
-public interface Element {
+public interface Element extends Model {
 
     /**
      * Returns the name. Note that the name is not a unique identifier.

@@ -15,9 +15,9 @@
  */
 package org.gradle.cache.internal;
 
-import org.gradle.api.internal.Factory;
+import org.gradle.internal.Factory;
+import org.gradle.internal.UncheckedException;
 import org.gradle.util.GFileUtils;
-import org.gradle.util.UncheckedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,16 +26,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
  *
- * <ul>
- *     <li>State region: 1 byte version field, 1 byte clean flag.</li>
- *     <li>Owner information region: 1 byte version field, utf-8 encoded owner process id, utf-8 encoded owner operation display name.</li>
- * </ul>
+ * <ul> <li>State region: 1 byte version field, 1 byte clean flag.</li> <li>Owner information region: 1 byte version field, utf-8 encoded owner process id, utf-8 encoded owner operation display
+ * name.</li> </ul>
  */
 public class DefaultFileLockManager implements FileLockManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultFileLockManager.class);
@@ -68,7 +65,7 @@ public class DefaultFileLockManager implements FileLockManager {
             return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName);
         } catch (Throwable t) {
             lockedFiles.remove(canonicalTarget);
-            throw UncheckedException.asUncheckedException(t);
+            throw UncheckedException.throwAsUncheckedException(t);
         }
     }
 
@@ -80,6 +77,7 @@ public class DefaultFileLockManager implements FileLockManager {
         private final String operationDisplayName;
         private java.nio.channels.FileLock lock;
         private RandomAccessFile lockFileAccess;
+        private final boolean integrityViolated;
 
         public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName) throws Throwable {
             this.target = target;
@@ -91,11 +89,13 @@ public class DefaultFileLockManager implements FileLockManager {
             } else {
                 lockFile = new File(target.getParentFile(), target.getName() + ".lock");
             }
+
             lockFile.getParentFile().mkdirs();
             lockFile.createNewFile();
             lockFileAccess = new RandomAccessFile(lockFile, "rw");
             try {
                 lock = lock(mode);
+                integrityViolated = target.isFile() && target.length() > 0 && !getUnlockedCleanly();
             } catch (Throwable t) {
                 // Also releases any locks
                 lockFileAccess.close();
@@ -108,30 +108,39 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         public boolean getUnlockedCleanly() {
-            return readFromFile(new Callable<Boolean>() {
-                public Boolean call() throws Exception {
-                    try {
-                        lockFileAccess.seek(STATE_REGION_POS + 1);
-                        if (!lockFileAccess.readBoolean()) {
-                            // Process has crashed while updating target file
-                            return false;
-                        }
-                    } catch (EOFException e) {
-                        // Process has crashed writing to lock file
-                        return false;
-                    }
-                    return true;
+            assertOpen();
+            try {
+                lockFileAccess.seek(STATE_REGION_POS + 1);
+                if (!lockFileAccess.readBoolean()) {
+                    // Process has crashed while updating target file
+                    return false;
                 }
-            });
+            } catch (EOFException e) {
+                // Process has crashed writing to lock file
+                return false;
+            } catch (Exception e) {
+                throw UncheckedException.throwAsUncheckedException(e);
+            }
+
+            return true;
         }
 
-        public <T> T readFromFile(Factory<? extends T> action) throws LockTimeoutException {
-            assertOpen();
+        public <T> T readFile(Factory<? extends T> action) throws LockTimeoutException, FileIntegrityViolationException {
+            assertOpenAndIntegral();
             return action.create();
         }
 
-        public void writeToFile(Runnable action) {
+        public void updateFile(Runnable action) throws LockTimeoutException, FileIntegrityViolationException {
+            assertOpenAndIntegral();
+            withExclusiveLock(action);
+        }
+
+        public void writeFile(Runnable action) throws LockTimeoutException {
             assertOpen();
+            withExclusiveLock(action);
+        }
+
+        private void withExclusiveLock(Runnable action) {
             try {
                 // TODO - need to escalate without releasing lock
                 java.nio.channels.FileLock updateLock = null;
@@ -151,13 +160,20 @@ public class DefaultFileLockManager implements FileLockManager {
                     }
                 }
             } catch (Throwable t) {
-                throw UncheckedException.asUncheckedException(t);
+                throw UncheckedException.throwAsUncheckedException(t);
             }
         }
 
         private void assertOpen() {
             if (lock == null) {
                 throw new IllegalStateException("This lock has been closed.");
+            }
+        }
+
+        private void assertOpenAndIntegral() {
+            assertOpen();
+            if (integrityViolated) {
+                throw new FileIntegrityViolationException(String.format("The file '%s' was not unlocked cleanly", target));
             }
         }
 
@@ -184,7 +200,7 @@ public class DefaultFileLockManager implements FileLockManager {
                 lockedFiles.remove(target);
                 // Also releases any locks
                 try {
-                    if (!lock.isShared()) {
+                    if (lock != null && !lock.isShared()) {
                         // Discard information region
                         lockFileAccess.setLength(INFORMATION_REGION_POS);
                     }
@@ -222,7 +238,7 @@ public class DefaultFileLockManager implements FileLockManager {
                                 throw new IllegalStateException(String.format("Unexpected lock protocol found in lock file '%s' for %s.", lockFile, displayName));
                             }
                             ownerPid = lockFileAccess.readUTF();
-                            ownerOperation= lockFileAccess.readUTF();
+                            ownerOperation = lockFileAccess.readUTF();
                         }
                     } finally {
                         informationRegionLock.release();

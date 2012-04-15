@@ -19,18 +19,21 @@ package org.gradle.process.internal;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.internal.UncheckedException;
 import org.gradle.listener.AsyncListenerBroadcast;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.messaging.concurrent.DefaultExecutorFactory;
 import org.gradle.messaging.concurrent.StoppableExecutor;
 import org.gradle.process.ExecResult;
 import org.gradle.process.internal.shutdown.ShutdownHookActionRegister;
-import org.gradle.util.UncheckedException;
 
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -94,6 +97,7 @@ public class DefaultExecHandle implements ExecHandle {
     private final Condition stateChange;
 
     private final StoppableExecutor executor;
+    private final StoppableExecutor streamsProcessor;
 
     /**
      * State of this ExecHandle.
@@ -110,6 +114,7 @@ public class DefaultExecHandle implements ExecHandle {
     private final ListenerBroadcast<ExecHandleListener> broadcast;
 
     private final ExecHandleShutdownHookAction shutdownHookAction;
+    private boolean daemon;
 
     DefaultExecHandle(String displayName, File directory, String command, List<String> arguments,
                       Map<String, String> environment, OutputStream standardOutput, OutputStream errorOutput,
@@ -126,6 +131,7 @@ public class DefaultExecHandle implements ExecHandle {
         this.stateChange = lock.newCondition();
         this.state = ExecHandleState.INIT;
         executor = new DefaultExecutorFactory().create(String.format("Run %s", displayName));
+        streamsProcessor = new DefaultExecutorFactory().create(String.format("Drain outputs and pass input to process: %s", displayName));
         shutdownHookAction = new ExecHandleShutdownHookAction(this);
         broadcast = new AsyncListenerBroadcast<ExecHandleListener>(ExecHandleListener.class, executor);
         broadcast.addAll(listeners);
@@ -215,14 +221,16 @@ public class DefaultExecHandle implements ExecHandle {
             lock.unlock();
         }
 
-        LOGGER.debug("Process finished for {}.", displayName);
+        LOGGER.debug("Process finished (code: {}) for {}.", exitCode, displayName);
 
         broadcast.getSource().executionFinished(this, result);
         broadcast.stop();
         executor.requestStop();
+        streamsProcessor.requestStop();
     }
 
     public ExecHandle start() {
+        ProcessParentingInitializer.intitialize();
         lock.lock();
         try {
             if (!stateIn(ExecHandleState.INIT)) {
@@ -232,7 +240,7 @@ public class DefaultExecHandle implements ExecHandle {
 
             execResult = null;
 
-            execHandleRunner = new ExecHandleRunner(this, executor);
+            execHandleRunner = new ExecHandleRunner(this, streamsProcessor);
 
             executor.execute(execHandleRunner);
 
@@ -272,6 +280,7 @@ public class DefaultExecHandle implements ExecHandle {
 
     public ExecResult waitForFinish() {
         executor.stop();
+        streamsProcessor.stop();
 
         lock.lock();
         try {
@@ -280,6 +289,13 @@ public class DefaultExecHandle implements ExecHandle {
         } finally {
             lock.unlock();
         }
+    }
+
+    public void startDaemon() {
+        this.daemon = true;
+        start();
+        streamsProcessor.stop();
+        executor.stop();
     }
 
     void started() {
@@ -315,6 +331,10 @@ public class DefaultExecHandle implements ExecHandle {
 
     public void removeListener(ExecHandleListener listener) {
         broadcast.remove(listener);
+    }
+
+    public boolean isDaemon() {
+        return daemon;
     }
 
     private class ExecResultImpl implements ExecResult {

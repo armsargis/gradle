@@ -18,13 +18,11 @@ package org.gradle.api.internal.project.taskfactory;
 import org.gradle.api.*;
 import org.gradle.api.internal.AsmBackedClassGenerator;
 import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.IConventionAware;
 import org.gradle.api.internal.project.DefaultProject;
-import org.gradle.api.plugins.Convention;
-import org.gradle.api.tasks.ConventionValue;
 import org.gradle.api.tasks.TaskInstantiationException;
 import org.gradle.util.GUtil;
 import org.gradle.util.HelperUtil;
+import org.gradle.util.ReflectionUtil;
 import org.gradle.util.WrapUtil;
 import org.junit.Before;
 import org.junit.Test;
@@ -33,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
@@ -106,8 +105,8 @@ public class TaskFactoryTest {
 
         assertThat(task.getProperty(), nullValue());
 
-        task.getConventionMapping().map("property", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+        task.getConventionMapping().map("property", new Callable<Object>() {
+            public Object call() throws Exception {
                 return "conventionValue";
             }
         });
@@ -121,8 +120,8 @@ public class TaskFactoryTest {
     @Test
     public void doesNotApplyConventionMappingToGettersDefinedByTaskInterface() {
         TestConventionTask task = (TestConventionTask) checkTask(taskFactory.createTask(testProject, GUtil.map(Task.TASK_NAME, "task", Task.TASK_TYPE, TestConventionTask.class)));
-        task.getConventionMapping().map("description", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+        task.getConventionMapping().map("description", new Callable<Object>() {
+            public Object call() throws Exception {
                 throw new UnsupportedOperationException();
             }
         });
@@ -137,13 +136,15 @@ public class TaskFactoryTest {
         };
 
         Task task = checkTask(taskFactory.createTask(testProject, GUtil.map(Task.TASK_NAME, "task", Task.TASK_ACTION, action)));
-        assertThat((List)task.getActions(), equalTo((List) WrapUtil.toList(action)));
+        assertThat(task.getActions().size(), equalTo(1));
+        assertThat(ReflectionUtil.getProperty(task.getActions().get(0), "action"), sameInstance((Object) action));
     }
 
     @Test
     public void testCreateTaskWithActionClosure() {
         Task task = checkTask(taskFactory.createTask(testProject, GUtil.map(Task.TASK_NAME, "task", Task.TASK_ACTION, HelperUtil.TEST_CLOSURE)));
-        assertFalse(task.getActions().isEmpty());
+        assertThat(task.getActions().size(), equalTo(1));
+        assertThat(ReflectionUtil.getProperty(task.getActions().get(0), "closure"), sameInstance((Object) HelperUtil.TEST_CLOSURE));
     }
 
     @Test

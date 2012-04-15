@@ -17,6 +17,7 @@
 package org.gradle.util;
 
 import org.apache.commons.lang.StringEscapeUtils;
+import org.gradle.internal.SystemProperties;
 
 public class TextUtil {
     /**
@@ -61,5 +62,17 @@ public class TextUtil {
      */
     public static String escapeString(Object obj) {
         return obj == null ? null : StringEscapeUtils.escapeJava(obj.toString());
+    }
+
+    /**
+     * Tells whether the specified string contains any whitespace characters.
+     */
+    public static boolean containsWhitespace(String str) {
+        for (int i = 0; i < str.length(); i++) {
+            if (Character.isWhitespace(str.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 }

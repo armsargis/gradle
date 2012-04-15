@@ -151,10 +151,13 @@
                 <td>org.gradle.api.artifacts.ResolutionStrategy</td>
             </tr>
             <tr>
+                <td>org.gradle.api.dsl.ConventionProperty</td>
+            </tr>
+            <tr>
                 <td>org.gradle.api.plugins.ExtensionAware</td>
             </tr>
             <tr>
-                <td>org.gradle.api.dsl.ConventionProperty</td>
+                <td>org.gradle.api.plugins.ExtraPropertiesExtension</td>
             </tr>
         </table>
     </section>
@@ -215,6 +218,9 @@
                 <td>org.gradle.api.tasks.Exec</td>
             </tr>
             <tr>
+                <td>org.gradle.api.plugins.quality.FindBugs</td>
+            </tr>
+            <tr>
                 <td>org.gradle.api.tasks.GradleBuild</td>
             </tr>
             <tr>
@@ -233,6 +239,9 @@
                 <td>org.gradle.api.tasks.JavaExec</td>
             </tr>
             <tr>
+                <td>org.gradle.api.plugins.quality.JDepend</td>
+            </tr>
+            <tr>
                 <td>org.gradle.api.plugins.jetty.JettyRun</td>
             </tr>
             <tr>
@@ -240,6 +249,9 @@
             </tr>
             <tr>
                 <td>org.gradle.api.plugins.jetty.JettyStop</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.plugins.quality.Pmd</td>
             </tr>
             <tr>
                 <td>org.gradle.api.tasks.diagnostics.PropertyReportTask</td>
@@ -282,9 +294,6 @@
             </tr>
             <tr>
                 <td>org.gradle.api.tasks.bundling.Zip</td>
-            </tr>
-            <tr>
-                <td>org.gradle.api.tasks.bundling.AbstractArchiveTask</td>
             </tr>
         </table>
     </section>

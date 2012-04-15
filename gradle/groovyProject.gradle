@@ -18,7 +18,7 @@ dependencies {
 apply from: "$rootDir/gradle/compile.gradle"
 
 test {
-    maxParallelForks = guessMaxForks()
+    maxParallelForks = guessMaxForks(project)
     doFirst {
         if (isCIBuild()) {
             maxParallelForks = 2
@@ -27,7 +27,7 @@ test {
 }
 
 tasks.matching { it instanceof Compile || it instanceof GroovyCompile }.all {
-    options.compilerArgs << "-Xlint:unchecked"
+    options.useAnt = false
 }
 
 tasks.withType(Jar).each { jar ->
@@ -37,10 +37,10 @@ tasks.withType(Jar).each { jar ->
     ])
 }
 
-generatedResourcesDir = file("$buildDir/generated-resources/main")
+ext.generatedResourcesDir = file("$buildDir/generated-resources/main")
 
 task classpathManifest(type: ClasspathManifest)
-sourceSets.main.output.dir generatedResourcesDir, buildBy: classpathManifest
+sourceSets.main.output.dir generatedResourcesDir, builtBy: classpathManifest
 
 if (file("src/testFixtures").exists()) {
     apply from: "$rootDir/gradle/testFixtures.gradle"

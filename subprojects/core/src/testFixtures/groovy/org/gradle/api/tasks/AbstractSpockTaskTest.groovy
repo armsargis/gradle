@@ -32,7 +32,6 @@ import org.gradle.api.internal.project.taskfactory.ITaskFactory
 import org.gradle.api.internal.project.taskfactory.TaskFactory
 import org.gradle.api.internal.tasks.TaskExecuter
 import org.gradle.api.internal.tasks.TaskStateInternal
-import org.gradle.api.logging.LogLevel
 import org.gradle.api.specs.Spec
 import org.gradle.util.GUtil
 import org.gradle.util.HelperUtil
@@ -79,7 +78,6 @@ public abstract class AbstractSpockTaskTest extends Specification {
         getTask().getDescription() == null
         project.is( getTask().getProject())
         getTask().getStandardOutputCapture() != null
-        new HashMap() ==  getTask().getAdditionalProperties()
         getTask().getInputs() != null
         getTask().getOutputs() != null
         getTask().getOnlyIf() != null
@@ -135,34 +133,6 @@ public abstract class AbstractSpockTaskTest extends Specification {
         "task '" + getTask().getPath() + "'" ==  getTask().toString()
     }
 
-    def testDoFirst() {
-        when:
-        Action<Task> action1 = createTaskAction();
-        Action<Task> action2 = createTaskAction();
-
-        then:
-        int actionSizeBefore = getTask().getActions().size();
-        getTask().is( getTask().doFirst(action2))
-        actionSizeBefore + 1 ==  getTask().getActions().size()
-        action2 ==  getTask().getActions().get(0)
-        getTask().is( getTask().doFirst(action1))
-        action1 ==  getTask().getActions().get(0)
-    }
-
-    def testDoLast() {
-        when:
-        Action<Task> action1 = createTaskAction();
-        Action<Task> action2 = createTaskAction();
-
-        then:
-        int actionSizeBefore = getTask().getActions().size();
-        getTask().is( getTask().doLast(action1))
-        actionSizeBefore + 1 ==  getTask().getActions().size()
-        action1 ==  getTask().getActions().get(getTask().getActions().size() - 1)
-        getTask().is( getTask().doLast(action2))
-        action2 ==  getTask().getActions().get(getTask().getActions().size() - 1)
-    }
-
     def testDeleteAllActions() {
         when:
         Action<Task> action1 = createTaskAction();
@@ -183,14 +153,6 @@ public abstract class AbstractSpockTaskTest extends Specification {
         thrown(InvalidUserDataException)
     }
 
-    def testAddActionsWithClosures() {
-        when:
-        GroovyTaskTestHelper.checkAddActionsWithClosures(getTask());
-
-        then:
-        true
-    }
-
     def testExecuteDelegatesToTaskExecuter() {
         final AbstractTask task = getTask()
         TaskExecuter executer = Mock()
@@ -204,37 +166,12 @@ public abstract class AbstractSpockTaskTest extends Specification {
 
     }
 
-    def testConfigure() {
-        when:
-        getTask().setActions(new ArrayList());
-
-        then:
-        GroovyTaskTestHelper.checkConfigure(getTask());
-    }
-
     public AbstractProject getProject() {
         return project;
     }
 
     public void setProject(AbstractProject project) {
         this.project = project;
-    }
-
-    def disableStandardOutCapture() {
-        when:
-        getTask().disableStandardOutputCapture();
-
-        then:
-        assertFalse(getTask().getLogging().isStandardOutputCaptureEnabled());
-    }
-
-    def captureStandardOut() {
-        when:
-        getTask().captureStandardOutput(LogLevel.DEBUG);
-
-        then:
-        getTask().getLogging().isStandardOutputCaptureEnabled()
-        LogLevel.DEBUG ==  getTask().getLogging().getStandardOutputCaptureLevel()
     }
 
     def setGetDescription() {

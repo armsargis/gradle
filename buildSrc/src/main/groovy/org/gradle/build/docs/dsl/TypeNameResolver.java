@@ -20,7 +20,7 @@ import org.gradle.api.Action;
 import org.gradle.build.docs.dsl.model.ClassMetaData;
 import org.gradle.build.docs.dsl.model.TypeMetaData;
 import org.gradle.build.docs.model.ClassMetaDataRepository;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.UncheckedException;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -59,7 +59,7 @@ public class TypeNameResolver {
         try {
             getClass().getClassLoader().loadClass("groovy.lang.Closure");
         } catch (ClassNotFoundException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 

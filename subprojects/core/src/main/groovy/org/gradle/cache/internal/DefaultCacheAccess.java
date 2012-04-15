@@ -16,13 +16,13 @@
 package org.gradle.cache.internal;
 
 import net.jcip.annotations.ThreadSafe;
-import org.gradle.api.internal.Factory;
+import org.gradle.internal.Factory;
 import org.gradle.cache.CacheAccess;
 import org.gradle.cache.DefaultSerializer;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.cache.Serializer;
 import org.gradle.cache.internal.btree.BTreePersistentIndexedCache;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.UncheckedException;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -141,7 +141,7 @@ public class DefaultCacheAccess implements CacheAccess {
                 try {
                     condition.await();
                 } catch (InterruptedException e) {
-                    throw UncheckedException.asUncheckedException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
             owner = Thread.currentThread();
@@ -277,12 +277,16 @@ public class DefaultCacheAccess implements CacheAccess {
     }
 
     private class UnitOfWorkFileAccess extends AbstractFileAccess {
-        public <T> T readFromFile(Factory<? extends T> action) throws LockTimeoutException {
-            return getLock().readFromFile(action);
+        public <T> T readFile(Factory<? extends T> action) throws LockTimeoutException {
+            return getLock().readFile(action);
         }
 
-        public void writeToFile(Runnable action) throws LockTimeoutException {
-            getLock().writeToFile(action);
+        public void updateFile(Runnable action) throws LockTimeoutException {
+            getLock().updateFile(action);
+        }
+
+        public void writeFile(Runnable action) throws LockTimeoutException {
+            getLock().writeFile(action);
         }
     }
 

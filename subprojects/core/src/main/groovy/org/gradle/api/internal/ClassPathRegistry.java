@@ -16,14 +16,8 @@
 
 package org.gradle.api.internal;
 
-import java.io.File;
-import java.net.URL;
-import java.util.Set;
+import org.gradle.util.ClassPath;
 
 public interface ClassPathRegistry {
-    Set<URL> getClassPath(String name);
-
-    URL[] getClassPathUrls(String name);
-
-    Set<File> getClassPathFiles(String name);
+    ClassPath getClassPath(String name);
 }

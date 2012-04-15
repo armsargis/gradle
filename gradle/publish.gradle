@@ -14,11 +14,11 @@ task sourceJar(type: Jar) {
 }
 
 task generatePom {
-    pomFile = new File(temporaryDir, 'pom.xml')
+    ext.pomFile = new File(temporaryDir, 'pom.xml')
     doLast {
         dependencies {
             configurations.publishCompile.allDependencies.withType(ProjectDependency).each {
-                publishRuntime "org.gradle:gradle-${it.dependencyProject.name}:${version}"
+                publishRuntime "org.gradle:${it.dependencyProject.archivesBaseName}:${version}"
             }
             configurations.publishCompile.allDependencies.withType(ExternalModuleDependency).each {
                 publishRuntime it
@@ -53,8 +53,10 @@ uploadArchives {
         repositories {
             ivy {
                 artifactPattern "${version.libsUrl}/${project.group.replaceAll('\\.', '/')}/${archivesBaseName}/[revision]/[artifact]-[revision](-[classifier]).[ext]"
-                userName = artifactoryUserName
-                password = artifactoryUserPassword
+                credentials {
+                    username = artifactoryUserName
+                    password = artifactoryUserPassword
+                }
             }
         }
     }

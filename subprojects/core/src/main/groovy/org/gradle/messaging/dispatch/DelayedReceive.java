@@ -15,9 +15,9 @@
  */
 package org.gradle.messaging.dispatch;
 
-import org.gradle.messaging.concurrent.Stoppable;
-import org.gradle.util.TimeProvider;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.Stoppable;
+import org.gradle.internal.TimeProvider;
+import org.gradle.internal.UncheckedException;
 
 import java.util.Date;
 import java.util.Iterator;
@@ -63,7 +63,7 @@ public class DelayedReceive<T> implements Stoppable, Receive<T> {
                 }
             }
         } catch (InterruptedException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         } finally {
             lock.unlock();
         }
@@ -132,7 +132,7 @@ public class DelayedReceive<T> implements Stoppable, Receive<T> {
                 try {
                     condition.await();
                 } catch (InterruptedException e) {
-                    throw UncheckedException.asUncheckedException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         } finally {

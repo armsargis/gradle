@@ -19,9 +19,10 @@ package org.gradle.util
 import org.apache.ivy.Ivy
 import org.apache.tools.ant.Main
 import org.codehaus.groovy.runtime.InvokerHelper
-import org.gradle.os.OperatingSystem
+import org.gradle.internal.os.OperatingSystem
 
 import spock.lang.*
+import org.gradle.internal.jvm.Jvm
 
 /**
  * @author Hans Dockter

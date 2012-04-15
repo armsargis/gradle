@@ -18,7 +18,7 @@ package org.gradle.api.internal.file
 import org.gradle.util.Requires
 import org.gradle.util.TemporaryFolder
 import org.gradle.util.TestPrecondition
-import org.gradle.os.FileSystems
+import org.gradle.internal.nativeplatform.filesystem.FileSystems
 
 import org.junit.Rule
 import spock.lang.Specification
@@ -175,7 +175,6 @@ class BaseDirFileResolverSpec extends Specification {
     }
 
     def createLink(File link, File target) {
-        link.parentFile.mkdirs()
         FileSystems.default.createSymbolicLink(link, target)
     }
 
@@ -190,6 +189,6 @@ class BaseDirFileResolverSpec extends Specification {
     }
 
     def normalize(Object path, File baseDir = tmpDir.dir) {
-        new BaseDirFileResolver(baseDir).resolve(path)
+        new BaseDirFileResolver(FileSystems.default, baseDir).resolve(path)
     }
 }

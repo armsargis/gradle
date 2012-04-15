@@ -16,10 +16,14 @@
 
 package org.gradle.logging.internal;
 
-import org.gradle.logging.internal.JnaBootPathConfigurer.JnaNotAvailableException
+
+import org.gradle.internal.nativeplatform.NoOpTerminalDetector
+import org.gradle.internal.nativeplatform.WindowsTerminalDetector
+import org.gradle.internal.nativeplatform.jna.JnaBootPathConfigurer
+import org.gradle.internal.nativeplatform.jna.LibCBackedTerminalDetector
+import org.gradle.util.Requires
 import org.gradle.util.TemporaryFolder
 import org.gradle.util.TestPrecondition
-import org.gradle.util.Requires
 import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Specification
@@ -29,28 +33,33 @@ import spock.lang.Specification
  */
 public class TerminalDetectorFactoryTest extends Specification {
     @Rule
-    public def temp = new TemporaryFolder()
+    TemporaryFolder temp = new TemporaryFolder()
 
-    @Requires(TestPrecondition.JNA)
-    def "should configure jna library"() {
+    @Requires([TestPrecondition.JNA, TestPrecondition.NOT_WINDOWS])
+    def "should configure JNA library"() {
         when:
         def spec = new TerminalDetectorFactory().create(new JnaBootPathConfigurer(temp.dir))
 
         then:
-        spec instanceof TerminalDetector
+        spec instanceof LibCBackedTerminalDetector
+    }
+
+    @Requires([TestPrecondition.JNA, TestPrecondition.WINDOWS])
+    def "should configure JNA library on Windows"() {
+        when:
+        def spec = new TerminalDetectorFactory().create(new JnaBootPathConfigurer(temp.dir))
+
+        then:
+        spec instanceof WindowsTerminalDetector
     }
 
     @Issue("GRADLE-1776")
-    def "should assume no terminal is available when jna library not found"() {
-        given:
-        def configurer = Mock(JnaBootPathConfigurer)
-        configurer.configure() >> { throw new JnaNotAvailableException("foo") }
-
+    @Requires(TestPrecondition.NO_JNA)
+    def "should assume no terminal is available when JNA library is not available"() {
         when:
-        def spec = new TerminalDetectorFactory().create(configurer)
+        def spec = new TerminalDetectorFactory().create(new JnaBootPathConfigurer(temp.dir))
 
         then:
-        !spec.isSatisfiedBy(FileDescriptor.out)
-        !spec.isSatisfiedBy(FileDescriptor.err)
+        spec instanceof NoOpTerminalDetector
     }
 }

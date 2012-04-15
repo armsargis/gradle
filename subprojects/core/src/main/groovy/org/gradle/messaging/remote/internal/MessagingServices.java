@@ -15,20 +15,20 @@
  */
 package org.gradle.messaging.remote.internal;
 
-import org.gradle.api.internal.project.DefaultServiceRegistry;
-import org.gradle.messaging.concurrent.CompositeStoppable;
+import org.gradle.internal.id.UUIDGenerator;
+import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.CompositeStoppable;
 import org.gradle.messaging.concurrent.DefaultExecutorFactory;
 import org.gradle.messaging.concurrent.ExecutorFactory;
-import org.gradle.messaging.concurrent.Stoppable;
+import org.gradle.internal.Stoppable;
 import org.gradle.messaging.dispatch.DiscardingFailureHandler;
 import org.gradle.messaging.remote.MessagingClient;
 import org.gradle.messaging.remote.MessagingServer;
 import org.gradle.messaging.remote.internal.inet.*;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryMessage;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryProtocolSerializer;
-import org.gradle.util.IdGenerator;
-import org.gradle.util.UUIDGenerator;
-import org.gradle.util.UncheckedException;
+import org.gradle.internal.id.IdGenerator;
+import org.gradle.internal.UncheckedException;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
@@ -55,7 +55,6 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
     private final ClassLoader messageClassLoader;
     private final String broadcastGroup;
     private final SocketInetAddress broadcastAddress;
-    private final MessageOriginator messageOriginator;
     private DefaultMessagingClient messagingClient;
     private DefaultMultiChannelConnector multiChannelConnector;
     private TcpIncomingConnector<Message> incomingConnector;
@@ -77,24 +76,24 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
         this.messageClassLoader = messageClassLoader;
         this.broadcastGroup = broadcastGroup;
         this.broadcastAddress = broadcastAddress;
-
-        this.messageOriginator = new MessageOriginator(idGenerator.generateId(), determineNodeName());
     }
 
     private static SocketInetAddress defaultBroadcastAddress() {
         try {
             return new SocketInetAddress(InetAddress.getByName("233.253.17.122"), 7912);
         } catch (UnknownHostException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
     private static String determineNodeName() {
+        String hostName;
         try {
-            return String.format("%s@%s", System.getProperty("user.name"), InetAddress.getLocalHost().getHostName());
+            hostName = InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
-            throw UncheckedException.asUncheckedException(e);
+            hostName = new InetAddressFactory().findRemoteAddresses().get(0).toString();
         }
+        return String.format("%s@%s", System.getProperty("user.name"), hostName);
     }
 
     public void stop() {
@@ -113,6 +112,10 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
         stoppable.add(multicastConnection);
         stoppable.add(executorFactory);
         stoppable.stop();
+    }
+
+    protected MessageOriginator createMessageOriginator() {
+        return new MessageOriginator(idGenerator.generateId(), determineNodeName());
     }
 
     protected ExecutorFactory createExecutorFactory() {
@@ -161,7 +164,7 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
 
     protected IncomingBroadcast createIncomingBroadcast() {
         incomingBroadcast = new DefaultIncomingBroadcast(
-                messageOriginator,
+                get(MessageOriginator.class),
                 broadcastGroup,
                 get(AsyncConnection.class),
                 get(IncomingConnector.class),
@@ -173,7 +176,7 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
 
     protected OutgoingBroadcast createOutgoingBroadcast() {
         outgoingBroadcast = new DefaultOutgoingBroadcast(
-                messageOriginator,
+                get(MessageOriginator.class),
                 broadcastGroup,
                 get(AsyncConnection.class),
                 get(OutgoingConnector.class),

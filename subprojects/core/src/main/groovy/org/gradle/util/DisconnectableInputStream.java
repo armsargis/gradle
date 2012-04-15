@@ -15,6 +15,8 @@
  */
 package org.gradle.util;
 
+import org.gradle.internal.UncheckedException;
+import org.gradle.messaging.concurrent.DefaultExecutorFactory;
 import org.gradle.messaging.concurrent.ExecutorFactory;
 
 import java.io.IOException;
@@ -36,11 +38,21 @@ public class DisconnectableInputStream extends BulkReadInputStream {
     private boolean closed;
     private boolean inputFinished;
 
-    public DisconnectableInputStream(final InputStream source, ExecutorFactory executorFactory) {
+    public DisconnectableInputStream(InputStream source) {
+        // We use our own executor factory, as there is no way to break a worker thread out of source.read() below
+        this(source, new DefaultExecutorFactory(), 1024);
+    }
+
+    public DisconnectableInputStream(InputStream source, int bufferLength) {
+        // We use our own executor factory, as there is no way to break a worker thread out of source.read() below
+        this(source, new DefaultExecutorFactory(), bufferLength);
+    }
+
+    DisconnectableInputStream(InputStream source, ExecutorFactory executorFactory) {
         this(source, executorFactory, 1024);
     }
 
-    public DisconnectableInputStream(final InputStream source, ExecutorFactory executorFactory, int bufferLength) {
+    DisconnectableInputStream(final InputStream source, ExecutorFactory executorFactory, int bufferLength) {
         buffer = new byte[bufferLength];
         executorFactory.create("read input").execute(new Runnable() {
             public void run() {
@@ -99,7 +111,7 @@ public class DisconnectableInputStream extends BulkReadInputStream {
                     } finally {
                         lock.unlock();
                     }
-                    throw UncheckedException.asUncheckedException(throwable);
+                    throw UncheckedException.throwAsUncheckedException(throwable);
                 }
             }
         });
@@ -126,7 +138,7 @@ public class DisconnectableInputStream extends BulkReadInputStream {
             assert writePos >= readPos;
             condition.signalAll();
         } catch (InterruptedException e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         } finally {
             lock.unlock();
         }

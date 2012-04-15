@@ -17,17 +17,24 @@
 package org.gradle.api.internal.tasks.testing.worker;
 
 import org.gradle.api.Action;
-import org.gradle.api.internal.project.DefaultServiceRegistry;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
 import org.gradle.api.internal.tasks.testing.TestClassRunInfo;
 import org.gradle.api.internal.tasks.testing.TestResultProcessor;
 import org.gradle.api.internal.tasks.testing.WorkerTestClassProcessorFactory;
-import org.gradle.messaging.concurrent.DefaultExecutorFactory;
-import org.gradle.messaging.concurrent.StoppableExecutor;
+import org.gradle.internal.TrueTimeProvider;
+import org.gradle.internal.UncheckedException;
+import org.gradle.internal.id.CompositeIdGenerator;
+import org.gradle.internal.id.IdGenerator;
+import org.gradle.internal.id.LongIdGenerator;
+import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.listener.ContextClassLoaderProxy;
+import org.gradle.messaging.actor.ActorFactory;
+import org.gradle.messaging.actor.internal.DefaultActorFactory;
+import org.gradle.messaging.concurrent.DefaultExecutorFactory;
+import org.gradle.messaging.concurrent.ExecutorFactory;
 import org.gradle.messaging.remote.ObjectConnection;
 import org.gradle.process.internal.WorkerProcessContext;
-import org.gradle.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,28 +48,36 @@ public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClass
     private CountDownLatch completed;
     private TestClassProcessor processor;
     private TestResultProcessor resultProcessor;
-    private StoppableExecutor testExecutor;
 
     public TestWorker(WorkerTestClassProcessorFactory factory) {
         this.factory = factory;
     }
 
-    public void execute(WorkerProcessContext workerProcessContext) {
+    public void execute(final WorkerProcessContext workerProcessContext) {
         LOGGER.info("{} executing tests.", workerProcessContext.getDisplayName());
 
-        testExecutor = new DefaultExecutorFactory().create(workerProcessContext.getDisplayName() + " test executor"); 
         completed = new CountDownLatch(1);
 
         System.setProperty(WORKER_ID_SYS_PROPERTY, workerProcessContext.getWorkerId().toString());
-        
-        ObjectConnection serverConnection = workerProcessContext.getServerConnection();
 
-        IdGenerator<Object> idGenerator = new CompositeIdGenerator(workerProcessContext.getWorkerId(),
-                new LongIdGenerator());
+        DefaultServiceRegistry testServices = new TestFrameworkServiceRegistry(workerProcessContext);
+        startReceivingTests(workerProcessContext, testServices);
 
-        DefaultServiceRegistry testServices = new DefaultServiceRegistry();
-        testServices.add(IdGenerator.class, idGenerator);
+        try {
+            try {
+                completed.await();
+            } catch (InterruptedException e) {
+                throw new UncheckedException(e);
+            }
+        } finally {
+            LOGGER.info("{} finished executing tests.", workerProcessContext.getDisplayName());
+            testServices.close();
+        }
+    }
+
+    private void startReceivingTests(WorkerProcessContext workerProcessContext, ServiceRegistry testServices) {
         TestClassProcessor targetProcessor = factory.create(testServices);
+        IdGenerator<Object> idGenerator = testServices.get(IdGenerator.class);
 
         targetProcessor = new WorkerTestClassProcessor(targetProcessor, idGenerator.generateId(),
                 workerProcessContext.getDisplayName(), new TrueTimeProvider());
@@ -70,53 +85,21 @@ public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClass
                 TestClassProcessor.class, targetProcessor, workerProcessContext.getApplicationClassLoader());
         processor = proxy.getSource();
 
+        ObjectConnection serverConnection = workerProcessContext.getServerConnection();
         this.resultProcessor = serverConnection.addOutgoing(TestResultProcessor.class);
-
         serverConnection.addIncoming(RemoteTestClassProcessor.class, this);
-
-        try {
-            completed.await();
-        } catch (InterruptedException e) {
-            throw new UncheckedException(e);
-        }
-        LOGGER.info("{} finished executing tests.", workerProcessContext.getDisplayName());
     }
 
     public void startProcessing() {
         processor.startProcessing(resultProcessor);
     }
 
-    static private class ExceptionHolder {
-        public Throwable thrown;
-    }
-    
     public void processTestClass(final TestClassRunInfo testClass) {
-        final CountDownLatch executionFinishedLatch = new CountDownLatch(1);
-        final ExceptionHolder exceptionHolder = new ExceptionHolder();
-        
-        // Execute the tests in a separate thread to protect against the tests affecting
-        // our current thread (which is reused for future messages)
-        // http://issues.gradle.org/browse/GRADLE-1948
-        testExecutor.execute(new Runnable() {
-            public void run() {
-                try {
-                    processor.processTestClass(testClass);
-                } catch (Throwable e) {
-                    exceptionHolder.thrown = e;
-                } finally {
-                    executionFinishedLatch.countDown();
-                }
-            }
-        });
-        
         try {
-            executionFinishedLatch.await();
-        } catch (InterruptedException e) {
-            throw UncheckedException.asUncheckedException(e);
-        }
-        
-        if (exceptionHolder.thrown != null) {
-            throw UncheckedException.asUncheckedException(exceptionHolder.thrown);
+            processor.processTestClass(testClass);
+        } finally {
+            // Clean the interrupted status
+            Thread.interrupted();
         }
     }
 
@@ -125,6 +108,26 @@ public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClass
             processor.stop();
         } finally {
             completed.countDown();
+        }
+    }
+
+    private static class TestFrameworkServiceRegistry extends DefaultServiceRegistry {
+        private final WorkerProcessContext workerProcessContext;
+
+        public TestFrameworkServiceRegistry(WorkerProcessContext workerProcessContext) {
+            this.workerProcessContext = workerProcessContext;
+        }
+
+        protected IdGenerator<Object> createIdGenerator() {
+            return new CompositeIdGenerator(workerProcessContext.getWorkerId(), new LongIdGenerator());
+        }
+
+        protected ExecutorFactory createExecutorFactory() {
+            return new DefaultExecutorFactory();
+        }
+
+        protected ActorFactory createActorFactory() {
+            return new DefaultActorFactory(get(ExecutorFactory.class));
         }
     }
 }

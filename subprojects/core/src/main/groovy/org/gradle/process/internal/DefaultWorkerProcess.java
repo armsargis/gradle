@@ -17,10 +17,10 @@
 package org.gradle.process.internal;
 
 import org.gradle.api.Action;
+import org.gradle.internal.UncheckedException;
 import org.gradle.messaging.remote.ConnectEvent;
 import org.gradle.messaging.remote.ObjectConnection;
 import org.gradle.process.ExecResult;
-import org.gradle.util.UncheckedException;
 
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
@@ -114,11 +114,11 @@ public class DefaultWorkerProcess implements WorkerProcess {
                         throw new ExecException(String.format("Timeout waiting for %s to connect.", execHandle));
                     }
                 } catch (InterruptedException e) {
-                    throw UncheckedException.asUncheckedException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
             if (processFailure != null) {
-                throw UncheckedException.asUncheckedException(processFailure);
+                throw UncheckedException.throwAsUncheckedException(processFailure);
             }
             if (connection == null) {
                 throw new ExecException(String.format("Never received a connection from %s.", execHandle));
