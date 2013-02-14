@@ -15,15 +15,17 @@
  */
 package org.gradle.api.internal.artifacts.repositories
 
-import spock.lang.Specification
-import org.gradle.api.internal.file.FileResolver
+import org.apache.ivy.core.cache.RepositoryCacheManager
 import org.apache.ivy.plugins.resolver.FileSystemResolver
 import org.gradle.api.InvalidUserDataException
+import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.file.collections.SimpleFileCollection
+import spock.lang.Specification
 
 class DefaultFlatDirArtifactRepositoryTest extends Specification {
     final FileResolver fileResolver = Mock()
-    final DefaultFlatDirArtifactRepository repository = new DefaultFlatDirArtifactRepository(fileResolver)
+    final RepositoryCacheManager localCacheManager = Mock()
+    final DefaultFlatDirArtifactRepository repository = new DefaultFlatDirArtifactRepository(fileResolver, localCacheManager)
 
     def "creates a repository with multiple root directories"() {
         given:
@@ -35,12 +37,9 @@ class DefaultFlatDirArtifactRepositoryTest extends Specification {
         repository.dirs('a', 'b')
 
         when:
-        def repos = []
-        repository.createResolvers(repos)
+        def repo = repository.createResolver()
 
         then:
-        repos.size() == 1
-        def repo = repos[0]
         repo instanceof FileSystemResolver
         def expectedPatterns = [
                 "$dir1.absolutePath/[artifact]-[revision](-[classifier]).[ext]",
@@ -58,7 +57,7 @@ class DefaultFlatDirArtifactRepositoryTest extends Specification {
         _ * fileResolver.resolveFiles(_) >> new SimpleFileCollection()
 
         when:
-        repository.createResolvers([])
+        repository.createResolver()
 
         then:
         InvalidUserDataException e = thrown()

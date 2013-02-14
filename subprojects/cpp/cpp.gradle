@@ -15,18 +15,18 @@
  */
 
 dependencies {
-    groovy libraries.groovy_depends
-    compile project(':core'), project(":plugins"), project(":ide")
-    testRuntime project(":maven")
+    groovy libraries.groovy
+    compile project(':core')
+    compile project(":plugins")
+    compile project(":ide")
+    integTestRuntime project(":maven")
+}
+
+
+integTestTasks.all {
+    if (isWindows && systemProperties['org.gradle.integtest.executer'] == "embedded") {
+        systemProperties['org.gradle.integtest.executer'] =  "forking"
+    }
 }
 
 useTestFixtures()
-
-integTest.onlyIf {
-    try {
-        new org.gradle.process.internal.DefaultExecAction().setIgnoreExitValue(true).workingDir(buildDir).executable("g++").execute()
-        true
-    } catch (org.gradle.process.internal.ExecException e) {
-        false
-    }
-}

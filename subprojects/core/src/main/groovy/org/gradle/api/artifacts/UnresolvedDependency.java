@@ -21,17 +21,22 @@ package org.gradle.api.artifacts;
 public interface UnresolvedDependency {
 
     /**
-     * Returns the identifier of the dependency, for example GAV
+     * Deprecated. Please use {@link #getSelector()}
+     * <p>
+     * Returns the identifier of the dependency, for example group:name:version
      */
+    @Deprecated
     String getId();
 
     /**
-     * Returns the configuration
+     * The module selector of the dependency.
+     *
+     * @since 1.1-rc-1
      */
-    Configuration getGradleConfiguration();
+    ModuleVersionSelector getSelector();
 
     /**
      * the exception that is the cause of unresolved state
      */
-    Exception getProblem();
+    Throwable getProblem();
 }

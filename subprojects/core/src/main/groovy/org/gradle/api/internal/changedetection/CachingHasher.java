@@ -15,10 +15,8 @@
  */
 package org.gradle.api.internal.changedetection;
 
-import org.gradle.api.invocation.Gradle;
-import org.gradle.cache.CacheRepository;
 import org.gradle.cache.PersistentIndexedCache;
-import org.gradle.cache.Serializer;
+import org.gradle.messaging.serialize.DataStreamBackedSerializer;
 
 import java.io.*;
 
@@ -27,9 +25,9 @@ public class CachingHasher implements Hasher {
     private final Hasher hasher;
     private long timestamp;
 
-    public CachingHasher(Hasher hasher, CacheRepository cacheRepository, Gradle gradle) {
+    public CachingHasher(Hasher hasher, TaskArtifactStateCacheAccess cacheAccess) {
         this.hasher = hasher;
-        cache = cacheRepository.indexedCache(File.class, FileInfo.class, "fileHashes").forObject(gradle).withSerializer(new FileInfoSerializer()).open();
+        cache = cacheAccess.createCache("fileHashes", File.class, FileInfo.class, new FileInfoSerializer());
     }
 
     public byte[] hash(File file) {
@@ -58,9 +56,9 @@ public class CachingHasher implements Hasher {
         }
     }
 
-    private static class FileInfoSerializer implements Serializer<FileInfo> {
-        public FileInfo read(InputStream instr) throws Exception {
-            DataInputStream input = new DataInputStream(instr);
+    private static class FileInfoSerializer extends DataStreamBackedSerializer<FileInfo> {
+        @Override
+        public FileInfo read(DataInput input) throws IOException {
             int hashLength = input.readInt();
             byte[] hash = new byte[hashLength];
             input.readFully(hash);
@@ -69,13 +67,12 @@ public class CachingHasher implements Hasher {
             return new FileInfo(hash, length, timestamp);
         }
 
-        public void write(OutputStream outstr, FileInfo value) throws Exception {
-            DataOutputStream output = new DataOutputStream(outstr);
+        @Override
+        public void write(DataOutput output, FileInfo value) throws IOException {
             output.writeInt(value.hash.length);
             output.write(value.hash);
             output.writeLong(value.timestamp);
             output.writeLong(value.length);
-            output.flush();
         }
     }
 }

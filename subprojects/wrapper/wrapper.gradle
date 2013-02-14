@@ -13,15 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-configurations {
-    compile.extendsFrom = []
+dependencies {
+    groovy libraries.groovy
+    compile project(":cli")
+    testCompile libraries.ant
+
+    integTestRuntime rootProject.configurations.testRuntime.allDependencies
 }
 
-dependencies {
-    groovy libraries.groovy_depends
+task buildReceiptResource(type: Copy, dependsOn: rootProject.createBuildReceipt) {
+    into generatedTestResourcesDir
+    from rootProject.createBuildReceipt.receiptFile
+}
+sourceSets.test.output.dir generatedTestResourcesDir, builtBy: buildReceiptResource
 
-    testCompile libraries.ant
+task executableJar(type: Jar) {
+    archiveName = 'gradle-wrapper.jar'
+    from sourceSets.main.output
+    from rootProject.createBuildReceipt
+    from configurations.runtime.allDependencies.withType(ProjectDependency).collect { it.dependencyProject.sourceSets.main.output }
+}
+
+integTestTasks.all {
+    inputs.files { project(":distributions").binZip }
 }
 
 useTestFixtures()
-
+useClassycle()

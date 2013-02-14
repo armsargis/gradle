@@ -16,6 +16,7 @@
 
 package org.gradle.api.plugins.jetty;
 
+import com.google.common.collect.Sets;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.ConfigurableFileTree;
 import org.gradle.api.file.FileCollection;
@@ -102,7 +103,7 @@ public class JettyRun extends AbstractJettyRunTask {
     /**
      * Extra scan targets as a list.
      */
-    private List<File> extraScanTargets;
+    private Set<File> extraScanTargets;
 
     private FileCollection classpath;
 
@@ -161,11 +162,11 @@ public class JettyRun extends AbstractJettyRunTask {
                 ConfigurableFileTree files = getProject().fileTree(scanTargetPattern.getDirectory());
                 files.include(scanTargetPattern.getIncludes());
                 files.exclude(scanTargetPattern.getExcludes());
-                List<File> currentTargets = getExtraScanTargets();
+                Set<File> currentTargets = getExtraScanTargets();
                 if (currentTargets != null && !currentTargets.isEmpty()) {
                     currentTargets.addAll(files.getFiles());
                 } else {
-                    setExtraScanTargets((List) files.asType(List.class));
+                    setExtraScanTargets(files.getFiles());
                 }
             }
         }
@@ -206,7 +207,7 @@ public class JettyRun extends AbstractJettyRunTask {
         scanList.add(getProject().getBuildFile());
         scanList.addAll(getClassPathFiles());
         getScanner().setScanDirs(scanList);
-        ArrayList listeners = new ArrayList();
+        List<Scanner.Listener> listeners = new ArrayList<Scanner.Listener>();
         listeners.add(new Scanner.BulkListener() {
             public void filesChanged(List changes) {
                 try {
@@ -399,12 +400,12 @@ public class JettyRun extends AbstractJettyRunTask {
         this.scanTargets = scanTargets;
     }
 
-    public List<File> getExtraScanTargets() {
+    public Set<File> getExtraScanTargets() {
         return extraScanTargets;
     }
 
-    public void setExtraScanTargets(List<File> extraScanTargets) {
-        this.extraScanTargets = extraScanTargets;
+    public void setExtraScanTargets(Iterable<File> extraScanTargets) {
+        this.extraScanTargets = Sets.newLinkedHashSet(extraScanTargets);
     }
 
     @InputFile

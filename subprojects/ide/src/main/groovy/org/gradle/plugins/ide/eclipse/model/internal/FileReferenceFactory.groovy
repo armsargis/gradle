@@ -32,7 +32,6 @@ class FileReferenceFactory {
      */
     FileReference fromFile(File file) {
         if (!file) {
-
             return null
         }
         def path = null
@@ -66,6 +65,19 @@ class FileReferenceFactory {
         new FileReferenceImpl(new File(path), path, false)
     }
 
+    /**
+     * Creates a reference to the given path. Returns null for for null path
+     */
+    FileReference fromJarURI(String jarURI) {
+        if (jarURI== null) {
+            return null
+        }
+        //cut the pre and postfix of this url
+        URI fileURI = new URI(jarURI - "jar:" - "!/");
+        File file = new File(fileURI);
+        String path = PathUtil.normalizePath(file.absolutePath)
+        new FileReferenceImpl(file, path, false);
+    }
     /**
      * Creates a reference to the given path containing a variable reference. Returns null for null variable path
      */
@@ -104,6 +116,19 @@ class FileReferenceFactory {
             }
 
             return file.equals(obj.file)
+        }
+
+        public String getJarURL(){
+            //windows needs an additional backslash in jar urls
+            return "jar:${file.toURI()}!/"
+        }
+
+        public String toString() {
+            return "{" +
+                    "file='" + file + '\'' +
+                    "path='" + path + '\'' +
+                    ", jarUrl='" + getJarURL() + '\'' +
+                    '}';
         }
 
         @Override

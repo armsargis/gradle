@@ -19,6 +19,8 @@ import org.gradle.api.Task;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.maven.Conf2ScopeMapping;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
+import org.gradle.api.artifacts.maven.MavenResolver;
+import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.internal.project.DefaultProject;
 import org.gradle.api.tasks.Upload;
 import org.gradle.util.HelperUtil;
@@ -36,20 +38,28 @@ import static org.junit.Assert.assertThat;
  */
 public class MavenPluginTest {
     private final DefaultProject project = HelperUtil.createRootProject();
-    private final MavenPlugin mavenPlugin = new MavenPlugin();
 
     @org.junit.Test
-    public void addsConventionMappingsToRepositoriesHandler() {
-        mavenPlugin.apply(project);
+    public void addsConventionToProject() {
+        project.getPlugins().apply(MavenPlugin.class);
 
-        assertThat(project.getRepositories().getMavenPomDir(), equalTo(new File(project.getBuildDir(), "poms")));
-        assertThat(project.getRepositories().getMavenScopeMappings(), notNullValue());
+        assertThat(project.getConvention().getPlugin(MavenPluginConvention.class), notNullValue());
+    }
+    
+    @org.junit.Test
+    public void defaultConventionValues() {
+        project.getPlugins().apply(MavenPlugin.class);
+
+        MavenPluginConvention convention = project.getConvention().getPlugin(MavenPluginConvention.class);
+        assertThat(convention.getMavenPomDir(), equalTo(new File(project.getBuildDir(), "poms")));
+        assertThat(convention.getConf2ScopeMappings(), notNullValue());
     }
 
     @org.junit.Test
     public void applyWithWarPlugin() {
         project.getPlugins().apply(WarPlugin.class);
-        mavenPlugin.apply(project);
+        project.getPlugins().apply(MavenPlugin.class);
+
         assertHasConfigurationAndMapping(project, WarPlugin.PROVIDED_COMPILE_CONFIGURATION_NAME, Conf2ScopeMappingContainer.PROVIDED,
                 MavenPlugin.PROVIDED_COMPILE_PRIORITY);
         assertHasConfigurationAndMapping(project, WarPlugin.PROVIDED_RUNTIME_CONFIGURATION_NAME, Conf2ScopeMappingContainer.PROVIDED,
@@ -61,7 +71,7 @@ public class MavenPluginTest {
     }
 
     private void assertHasConfigurationAndMapping(DefaultProject project, String configurationName, String scope, int priority) {
-        Conf2ScopeMappingContainer scopeMappingContainer = project.getRepositories().getMavenScopeMappings();
+        Conf2ScopeMappingContainer scopeMappingContainer = project.getConvention().getPlugin(MavenPluginConvention.class).getConf2ScopeMappings();
         ConfigurationContainer configurationContainer = project.getConfigurations();
         Conf2ScopeMapping mapping = scopeMappingContainer.getMappings().get(configurationContainer.getByName(configurationName));
         assertThat(mapping.getScope(), equalTo(scope));
@@ -71,7 +81,8 @@ public class MavenPluginTest {
     @org.junit.Test
     public void applyWithJavaPlugin() {
         project.getPlugins().apply(JavaPlugin.class);
-        mavenPlugin.apply(project);
+        project.getPlugins().apply(MavenPlugin.class);
+
         assertHasConfigurationAndMapping(project, JavaPlugin.COMPILE_CONFIGURATION_NAME, Conf2ScopeMappingContainer.COMPILE,
                 MavenPlugin.COMPILE_PRIORITY);
         assertHasConfigurationAndMapping(project, JavaPlugin.RUNTIME_CONFIGURATION_NAME, Conf2ScopeMappingContainer.RUNTIME,
@@ -89,23 +100,38 @@ public class MavenPluginTest {
     @org.junit.Test
     public void addsAndConfiguresAnInstallTask() {
         project.getPlugins().apply(JavaPlugin.class);
-        mavenPlugin.apply(project);
+        project.getPlugins().apply(MavenPlugin.class);
 
         Upload task = project.getTasks().withType(Upload.class).getByName(MavenPlugin.INSTALL_TASK_NAME);
-        assertThat(task.getRepositories().getMavenPomDir(), equalTo(project.getRepositories().getMavenPomDir()));
-        assertThat(task.getRepositories().getMavenScopeMappings(), sameInstance(project.getRepositories().getMavenScopeMappings()));
+        assertThat(task.getRepositories().get(0), instanceOf(MavenResolver.class));
+    }
+
+    @org.junit.Test
+    public void addsConventionMappingToTheRepositoryContainerOfEachUploadTask() {
+        project.getPlugins().apply(JavaPlugin.class);
+        project.getPlugins().apply(MavenPlugin.class);
+
+        Upload task = project.getTasks().withType(Upload.class).getByName(MavenPlugin.INSTALL_TASK_NAME);
+        MavenRepositoryHandlerConvention convention = new DslObject(task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
+        assertThat(convention, notNullValue());
+
+        task = project.getTasks().add("customUpload", Upload.class);
+        convention = new DslObject(task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
+        assertThat(convention, notNullValue());
     }
 
     @org.junit.Test
     public void applyWithoutWarPlugin() {
-        mavenPlugin.apply(project);
+        project.getPlugins().apply(MavenPlugin.class);
+
         assertThat(project.getConfigurations().findByName(WarPlugin.PROVIDED_COMPILE_CONFIGURATION_NAME),
                 nullValue());
     }
 
     @org.junit.Test
     public void applyWithoutJavaPlugin() {
-        mavenPlugin.apply(project);
+        project.getPlugins().apply(MavenPlugin.class);
+
         assertThat(project.getConfigurations().findByName(JavaPlugin.COMPILE_CONFIGURATION_NAME),
                 nullValue());
     }

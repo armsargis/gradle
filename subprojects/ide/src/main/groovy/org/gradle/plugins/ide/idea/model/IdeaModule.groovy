@@ -269,9 +269,9 @@ class IdeaModule {
 
     /**
      * Enables advanced configuration like tinkering with the output xml
-     * or affecting the way existing *.iml content is merged with gradle build information
+     * or affecting the way existing *.iml content is merged with gradle build information.
      * <p>
-     * For example see docs for {@link IdeaModule}
+     * For example see docs for {@link IdeaModule}.
      */
     void iml(Closure closure) {
         ConfigureUtil.configure(closure, getIml())
@@ -289,7 +289,7 @@ class IdeaModule {
     }
 
     void setOutputFile(File newOutputFile) {
-        name = newOutputFile.name.replaceFirst(/\.iml$/,"");
+        setName(newOutputFile.name.replaceFirst(/\.iml$/,""))
         iml.generateTo = newOutputFile.parentFile
     }
 
@@ -299,7 +299,7 @@ class IdeaModule {
      * @return dependencies
      */
     Set<Dependency> resolveDependencies() {
-        return new IdeaDependenciesProvider().provide(this, getPathFactory())
+        return new IdeaDependenciesProvider().provide(this)
     }
 
     /**
@@ -309,10 +309,11 @@ class IdeaModule {
      * IdeaModule instances should be configured with all necessary information by the plugin or user.
      */
     final org.gradle.api.Project project
+
     PathFactory pathFactory
 
     /**
-     * If true then GAV-configured artifacts will not be included in the resulting classpath
+     * If true then external artifacts (e.g. those found in repositories) will not be included in the resulting classpath
      * (only project and local file dependencies will be included).
      */
     boolean offline

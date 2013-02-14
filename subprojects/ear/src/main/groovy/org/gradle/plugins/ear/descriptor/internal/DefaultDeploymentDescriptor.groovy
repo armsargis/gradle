@@ -18,14 +18,16 @@ package org.gradle.plugins.ear.descriptor.internal
 import groovy.xml.QName
 import org.gradle.api.Action
 import org.gradle.api.UncheckedIOException
-import org.gradle.api.artifacts.maven.XmlProvider
+import org.gradle.api.XmlProvider
+import org.gradle.api.internal.DomNode
+import org.gradle.api.internal.ErroringAction
+import org.gradle.api.internal.IoActions
+import org.gradle.api.internal.xml.XmlTransformer
+import org.gradle.api.internal.file.FileResolver
 import org.gradle.plugins.ear.descriptor.DeploymentDescriptor
 import org.gradle.plugins.ear.descriptor.EarModule
 import org.gradle.plugins.ear.descriptor.EarSecurityRole
 import org.gradle.plugins.ear.descriptor.EarWebModule
-import org.gradle.api.internal.XmlTransformer
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.api.internal.DomNode
 
 /**
  * @author David Gileadi
@@ -118,7 +120,7 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
             readFrom reader
             return true
         } catch (IOException e) {
-            throw new UncheckedIOException(e.getMessage(), e)
+            throw new UncheckedIOException(e)
         }
     }
 
@@ -183,21 +185,13 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
     }
 
     public DefaultDeploymentDescriptor writeTo(Object path) {
-
-        try {
-            File file = fileResolver.resolve(path)
-            if (file.getParentFile() != null) {
-                file.getParentFile().mkdirs()
+        IoActions.writeFile(fileResolver.resolve(path), new ErroringAction<Writer>() {
+            @Override
+            void doExecute(Writer writer) {
+                writeTo(writer);
             }
-            FileWriter writer = new FileWriter(file)
-            try {
-                return writeTo(writer)
-            } finally {
-                writer.close()
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e)
-        }
+        })
+        return this;
     }
 
     public DefaultDeploymentDescriptor writeTo(Writer writer) {

@@ -26,10 +26,7 @@ import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetOutput;
 import org.gradle.util.ConfigureUtil;
-import org.gradle.util.DeprecationLogger;
 import org.gradle.util.GUtil;
-
-import java.io.File;
 
 public class DefaultSourceSet implements SourceSet {
     private final String name;
@@ -43,7 +40,7 @@ public class DefaultSourceSet implements SourceSet {
 
     private DefaultSourceSetOutput output;
 
-    public DefaultSourceSet(String name, FileResolver fileResolver, TaskResolver taskResolver) {
+    public DefaultSourceSet(String name, FileResolver fileResolver) {
         this.name = name;
         displayName = GUtil.toWords(this.name);
 
@@ -99,6 +96,10 @@ public class DefaultSourceSet implements SourceSet {
         return getTaskName("process", "resources");
     }
 
+    public String getJarTaskName() {
+        return getTaskName(null, "jar");
+    }
+
     public String getTaskName(String verb, String target) {
         if (verb == null) {
             return StringUtils.uncapitalize(String.format("%s%s", getTaskBaseName(), StringUtils.capitalize(target)));
@@ -113,19 +114,12 @@ public class DefaultSourceSet implements SourceSet {
         return name.equals(SourceSet.MAIN_SOURCE_SET_NAME) ? "" : GUtil.toCamelCase(name);
     }
 
-    public File getClassesDir() {
-        DeprecationLogger.nagUser("sourceSet.classesDir", "sourceSet.output.classesDir");
-        return output.getClassesDir();
+    public String getCompileConfigurationName() {
+        return StringUtils.uncapitalize(String.format("%sCompile", getTaskBaseName()));
     }
 
-    public void setClassesDir(File classesDir) {
-        DeprecationLogger.nagUser("sourceSet.classesDir", "sourceSet.output.classesDir");
-        this.output.setClassesDir(classesDir);
-    }
-
-    public SourceSetOutput getClasses() {
-        DeprecationLogger.nagUser("sourceSet.classes", "sourceSet.output");
-        return getOutput();
+    public String getRuntimeConfigurationName() {
+        return StringUtils.uncapitalize(String.format("%sRuntime", getTaskBaseName()));
     }
 
     public SourceSetOutput getOutput() {

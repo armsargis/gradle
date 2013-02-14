@@ -17,12 +17,10 @@
 package org.gradle.api.internal.changedetection;
 
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.invocation.Gradle;
-import org.gradle.cache.CacheRepository;
 import org.gradle.cache.PersistentIndexedCache;
+import org.gradle.internal.id.IdGenerator;
 import org.gradle.util.ChangeListener;
 import org.gradle.util.DiffUtil;
-import org.gradle.util.IdGenerator;
 import org.gradle.util.NoOpChangeListener;
 
 import java.io.File;
@@ -46,10 +44,10 @@ public class OutputFilesSnapshotter implements FileSnapshotter {
     private final PersistentIndexedCache<String, Long> dirIdentiferCache;
 
     public OutputFilesSnapshotter(FileSnapshotter snapshotter, IdGenerator<Long> idGenerator,
-                                  CacheRepository cacheRepository, Gradle gradle) {
+                                  TaskArtifactStateCacheAccess cacheAccess) {
         this.snapshotter = snapshotter;
         this.idGenerator = idGenerator;
-        dirIdentiferCache = cacheRepository.indexedCache(String.class, Long.class, "outputFileStates").forObject(gradle).open();
+        dirIdentiferCache = cacheAccess.createCache("outputFileStates", String.class, Long.class);
     }
 
     public FileCollectionSnapshot emptySnapshot() {

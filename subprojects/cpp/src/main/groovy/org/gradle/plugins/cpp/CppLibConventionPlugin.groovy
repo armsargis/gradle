@@ -21,11 +21,12 @@ import org.gradle.api.tasks.bundling.Zip
 
 import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
 import org.gradle.api.internal.artifacts.publish.ArchivePublishArtifact
+import org.gradle.api.internal.plugins.DefaultArtifactPublicationSet
 
 class CppLibConventionPlugin implements Plugin<Project> {
 
     void apply(Project project) {
-        project.apply(plugin: "cpp")
+        project.plugins.apply(CppPlugin)
 
         project.with {
             cpp {
@@ -35,11 +36,8 @@ class CppLibConventionPlugin implements Plugin<Project> {
             }
             libraries {
                 main {
-                    sourceSets << cpp.sourceSets.main
-                    spec {
-                        // Do we default to shared?
-                        sharedLibrary()
-                    }
+                    sourceSets << project.cpp.sourceSets.main
+                    spec.baseName = project.name
                 }
             }
 
@@ -52,7 +50,7 @@ class CppLibConventionPlugin implements Plugin<Project> {
 
                 // needs to be more general and not peer into the spec
                 libraries.main.spec.outputFile,
-                libraries.main.spec.task
+                libraries.main
             )
 
             task("assembleHeaders", type: Zip) {
@@ -62,9 +60,8 @@ class CppLibConventionPlugin implements Plugin<Project> {
 
             def headerArtifact = new ArchivePublishArtifact(assembleHeaders)
 
-            artifacts {
-                archives libArtifact, headerArtifact
-            }
+            extensions.getByType(DefaultArtifactPublicationSet).addCandidate(libArtifact)
+            extensions.getByType(DefaultArtifactPublicationSet).addCandidate(headerArtifact)
         }
     }
 

@@ -19,37 +19,34 @@ package org.gradle.api.tasks.compile;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.tasks.compile.GroovyJavaJointCompiler;
+import org.gradle.api.internal.tasks.compile.Compiler;
+import org.gradle.api.internal.tasks.compile.GroovyJavaJointCompileSpec;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.util.GFileUtils;
+import org.gradle.util.JUnit4GroovyMockery;
+import org.hamcrest.core.IsNull;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JUnit4Mockery;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.io.File;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
 
-import static org.gradle.util.Matchers.*;
-import static org.gradle.util.WrapUtil.*;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Hans Dockter
  */
 @RunWith(org.jmock.integration.junit4.JMock.class)
 public class GroovyCompileTest extends AbstractCompileTest {
-    static final List TEST_GROOVY_CLASSPATH = toList(new File("groovy.jar"));
 
     private GroovyCompile testObj;
 
-    GroovyJavaJointCompiler groovyCompilerMock;
+    Compiler<GroovyJavaJointCompileSpec> groovyCompilerMock;
 
-    JUnit4Mockery context = new JUnit4Mockery();
+    JUnit4Mockery context = new JUnit4GroovyMockery();
 
     public AbstractCompile getCompile() {
         return testObj;
@@ -57,9 +54,8 @@ public class GroovyCompileTest extends AbstractCompileTest {
 
     @Before
     public void setUp() {
-        super.setUp();
         testObj = createTask(GroovyCompile.class);
-        groovyCompilerMock = context.mock(GroovyJavaJointCompiler.class);
+        groovyCompilerMock = context.mock(Compiler.class);
         testObj.setCompiler(groovyCompilerMock);
 
         GFileUtils.touch(new File(srcDir, "incl/file.groovy"));
@@ -70,17 +66,11 @@ public class GroovyCompileTest extends AbstractCompileTest {
     }
 
     public void testExecute(final int numFilesCompiled) {
-        setUpMocksAndAttributes(testObj, TEST_GROOVY_CLASSPATH);
+        setUpMocksAndAttributes(testObj, false);
         context.checking(new Expectations(){{
             WorkResult result = context.mock(WorkResult.class);
 
-            one(groovyCompilerMock).setSource(with(hasSameItems(testObj.getSource())));
-            one(groovyCompilerMock).setDestinationDir(testObj.getDestinationDir());
-            one(groovyCompilerMock).setClasspath(testObj.getClasspath());
-            one(groovyCompilerMock).setSourceCompatibility(testObj.getSourceCompatibility());
-            one(groovyCompilerMock).setTargetCompatibility(testObj.getTargetCompatibility());
-            one(groovyCompilerMock).setGroovyClasspath(TEST_GROOVY_CLASSPATH);
-            one(groovyCompilerMock).execute();
+            one(groovyCompilerMock).execute((GroovyJavaJointCompileSpec) with(IsNull.notNullValue()));
             will(returnValue(result));
             allowing(result).getDidWork();
             will(returnValue(numFilesCompiled > 0));
@@ -101,24 +91,19 @@ public class GroovyCompileTest extends AbstractCompileTest {
         assertFalse(testObj.getDidWork());
     }
 
-    @Test
-    public void testExecuteWithEmptyGroovyClasspath() {
-        setUpMocksAndAttributes(testObj, Collections.emptyList());
-        try {
-            testObj.compile();
-        } catch (InvalidUserDataException e) {
-            return;
-        }
-        Assert.fail();
+    @Test(expected = InvalidUserDataException.class)
+    public void testMoansIfGroovyClasspathIsEmpty() {
+        setUpMocksAndAttributes(testObj, true);
+        testObj.compile();
     }
 
-    void setUpMocksAndAttributes(GroovyCompile compile, final List groovyClasspath) {
+    void setUpMocksAndAttributes(GroovyCompile compile, final boolean groovyClasspathEmpty) {
         super.setUpMocksAndAttributes(compile);
 
         final FileCollection groovyClasspathCollection = context.mock(FileCollection.class);
         context.checking(new Expectations(){{
-            allowing(groovyClasspathCollection).getFiles();
-            will(returnValue(new LinkedHashSet<File>(groovyClasspath)));
+            allowing(groovyClasspathCollection).isEmpty();
+            will(returnValue(groovyClasspathEmpty));
         }});
 
         compile.setGroovyClasspath(groovyClasspathCollection);

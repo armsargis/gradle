@@ -16,20 +16,21 @@
 
 package org.gradle.plugins.ide.idea
 
-import java.util.regex.Pattern
-import junit.framework.AssertionFailedError
 import org.custommonkey.xmlunit.Diff
 import org.custommonkey.xmlunit.ElementNameAndAttributeQualifier
 import org.custommonkey.xmlunit.XMLAssert
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.internal.os.OperatingSystem
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
-import org.gradle.util.TestFile
+import org.gradle.test.fixtures.file.TestFile
 import org.junit.Rule
 import org.junit.Test
 
+import java.util.regex.Pattern
+
 class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     @Rule
-    public final TestResources testResources = new TestResources()
+    public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
     void mergesImlCorrectly() {
@@ -80,7 +81,7 @@ apply plugin: 'idea'
 
     @Test
     void worksWithNonStandardLayout() {
-        executer.inDirectory(testDir.file('root')).withTasks('idea').run()
+        executer.inDirectory(testDirectory.file('root')).withTasks('idea').run()
 
         assertHasExpectedContents('root/root.ipr')
         assertHasExpectedContents('root/root.iml')
@@ -105,15 +106,15 @@ apply plugin: 'idea'
     @Test
     void canHandleCircularModuleDependencies() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2", "myArtifact1")
+        def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish().artifactFile
+        def artifact2 = maven(repoDir).module("myGroup", "myArtifact2").dependsOn("myArtifact1").publish().artifactFile
 
         runIdeaTask """
 apply plugin: "java"
 apply plugin: "idea"
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -126,6 +127,36 @@ dependencies {
         assert libs.size() == 2
         assert libs.CLASSES.root*.@url*.text().collect { new File(it).name } as Set == [artifact1.name + "!", artifact2.name + "!"] as Set
     }
+
+    @Test
+        void libraryReferenceSubstitutesPathVariable() {
+            def repoDir = file("repo")
+            def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").publish().artifactFile
+
+            runIdeaTask """
+    apply plugin: "java"
+    apply plugin: "idea"
+
+    repositories {
+        maven { url "${repoDir.toURI()}" }
+    }
+
+    idea {
+       pathVariables("GRADLE_REPO": file("repo"))
+    }
+
+    dependencies {
+        compile "myGroup:myArtifact1:1.0"
+    }
+            """
+
+            def module = parseImlFile("root")
+            def libs = module.component.orderEntry.library
+            assert libs.size() == 1
+            assert libs.CLASSES.root*.@url*.text().collect { new File(it).name } as Set == [artifact1.name + "!"] as Set
+            assert libs.CLASSES.root*.@url*.text().findAll(){ it.contains("\$GRADLE_REPO\$") }.size() == 1
+            assert libs.CLASSES.root*.@url*.text().collect { it.replace("\$GRADLE_REPO\$", relPath(repoDir))} as Set == ["jar://${relPath(artifact1)}!/"] as Set
+        }
 
     @Test
     void onlyAddsSourceDirsThatExistOnFileSystem() {
@@ -173,15 +204,15 @@ tasks.idea << {
     @Test
     void respectsPerConfigurationExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish()
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runIdeaTask """
 apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 configurations {
@@ -201,15 +232,15 @@ dependencies {
     @Test
     void respectsPerDependencyExcludes() {
         def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        maven(repoDir).module("myGroup", "myArtifact1").dependsOn("myArtifact2").publish()
+        maven(repoDir).module("myGroup", "myArtifact2").publish()
 
         runIdeaTask """
 apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -305,25 +336,34 @@ apply plugin: "idea"
     }
 
     private void assertHasExpectedContents(String path) {
-        TestFile file = testDir.file(path).assertIsFile()
-        TestFile expectedFile = testDir.file("expectedFiles/${path}.xml").assertIsFile()
+        TestFile file = testDirectory.file(path).assertIsFile()
+        TestFile expectedFile = testDirectory.file("expectedFiles/${path}.xml").assertIsFile()
 
         def expectedXml = expectedFile.text
 
-        def homeDir = distribution.userHomeDir.absolutePath.replace(File.separator, '/')
-        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts/(.+?/.+?)/[a-z0-9]+/")
-        def actualXml = file.text.replaceAll(pattern, "@CACHE_DIR@/\$1/@REPO@/")
+        def homeDir = executer.gradleUserHomeDir.absolutePath.replace(File.separator, '/')
+        def pattern = Pattern.compile(Pattern.quote(homeDir) + "/caches/artifacts-\\d+/filestore/([^/]+/[^/]+/[^/]+/[^/]+)/[a-z0-9]+/")
+        def actualXml = file.text.replaceAll(pattern, '@CACHE_DIR@/$1/@SHA1@/')
 
         Diff diff = new Diff(expectedXml, actualXml)
         diff.overrideElementQualifier(new ElementNameAndAttributeQualifier())
         try {
             XMLAssert.assertXMLEqual(diff, true)
-        } catch (AssertionFailedError e) {
-            throw new AssertionFailedError("generated file '$path' does not contain the expected contents: ${e.message}.\nExpected:\n${expectedXml}\nActual:\n${actualXml}").initCause(e)
+        } catch (AssertionError e) {
+            if (OperatingSystem.current().unix) {
+                def process = ["diff", expectedFile.absolutePath, file.absolutePath].execute()
+                process.consumeProcessOutput(System.out, System.err)
+                process.waitFor()
+            }
+            throw new AssertionError("generated file '$path' does not contain the expected contents: ${e.message}.\nExpected:\n${expectedXml}\nActual:\n${actualXml}").initCause(e)
         }
     }
 
     private containsDir(path, urls) {
         urls.any { it.endsWith(path) }
+    }
+
+    private String relPath(File file){
+        return file.absolutePath.replace(File.separator, "/")
     }
 }

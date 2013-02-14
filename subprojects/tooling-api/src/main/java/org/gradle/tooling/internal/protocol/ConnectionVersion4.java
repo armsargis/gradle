@@ -18,9 +18,19 @@ package org.gradle.tooling.internal.protocol;
 /**
  * <p>Represents a connection to a particular Gradle implementation.
  *
- * <p>Implementations must be thread-safe.
+ * <p>The following constraints apply to implementations:
+ * <ul>
+ * <li>Implementations must be thread-safe.
+ * <li>Implementations should implement {@link BuildActionRunner}.
+ * <li>Implementations should implement {@link ConfigurableConnection}.
+ * <li>Implementations should provide a zero-args constructor
+ * <li>For backwards compatibility, implementations should implement {@link InternalConnection}.
+ * <li>For backwards compatibility, implementations should provide a {@code void configureLogging(boolean verboseLogging)} method.
+ * </ul>
  *
- * <p>DO NOT CHANGE THIS INTERFACE. It is part of the cross-version protocol.</p>
+ * <p>
+ * Changes to this interface may break the cross-version protocol.
+ * If you change it, make sure you run the all tooling api tests to flush out compatibility issues.
  */
 public interface ConnectionVersion4 {
     /**
@@ -36,10 +46,13 @@ public interface ConnectionVersion4 {
 
     /**
      * Fetches a snapshot of the model for the project.
+     * <p>
      *
      * @throws UnsupportedOperationException When the given model type is not supported.
      * @throws IllegalStateException When this connection has been stopped.
+     * @deprecated Use {@link BuildActionRunner#run(Class, BuildParameters)} instead.
      */
+    @Deprecated
     ProjectVersion3 getModel(Class<? extends ProjectVersion3> type, BuildOperationParametersVersion1 operationParameters) throws UnsupportedOperationException, IllegalStateException;
 
     /**
@@ -47,6 +60,8 @@ public interface ConnectionVersion4 {
      *
      * @param buildParameters The parameters for the build.
      * @throws IllegalStateException When this connection has been stopped.
+     * @deprecated Use {@link BuildActionRunner#run(Class, BuildParameters)} instead.
      */
+    @Deprecated
     void executeBuild(BuildParametersVersion1 buildParameters, BuildOperationParametersVersion1 operationParameters) throws IllegalStateException;
 }

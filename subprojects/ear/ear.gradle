@@ -15,8 +15,10 @@
  */
 
 dependencies {
-    groovy libraries.groovy_depends
-    compile project(':core'), project(":plugins")
+    groovy libraries.groovy
+    compile project(':core')
+    compile project(":plugins")
+    compile libraries.inject
 }
 
 useTestFixtures()

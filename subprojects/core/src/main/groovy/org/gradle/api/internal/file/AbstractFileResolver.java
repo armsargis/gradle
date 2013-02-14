@@ -22,39 +22,136 @@ import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection;
-import org.gradle.util.GFileUtils;
-import org.gradle.util.OperatingSystem;
+import org.gradle.api.internal.notations.api.NotationParser;
+import org.gradle.api.internal.notations.api.UnsupportedNotationException;
+import org.gradle.api.resources.ReadableResource;
+import org.gradle.internal.Factory;
+import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.internal.os.OperatingSystem;
+import org.gradle.util.CollectionUtils;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public abstract class AbstractFileResolver implements FileResolver {
-    private static final Pattern URI_SCHEME = Pattern.compile("[a-zA-Z][a-zA-Z0-9+-\\.]*:.+");
-    private static final Pattern ENCODED_URI = Pattern.compile("%([0-9a-fA-F]{2})");
+    private final FileSystem fileSystem;
+    private FileOrUriNotationParser fileNotationParser;
+
+    protected AbstractFileResolver(FileSystem fileSystem) {
+        this.fileSystem = fileSystem;
+        this.fileNotationParser = new FileOrUriNotationParser(fileSystem);
+    }
 
     public FileResolver withBaseDir(Object path) {
-        return new BaseDirConverter(resolve(path));
+        return new BaseDirFileResolver(fileSystem, resolve(path));
     }
 
     public File resolve(Object path) {
         return resolve(path, PathValidation.NONE);
     }
 
+    public NotationParser<File> asNotationParser() {
+        return new NotationParser<File>() {
+            public File parseNotation(Object notation) throws UnsupportedNotationException {
+                // TODO Further differentiate between unsupported notation errors and others (particularly when we remove the deprecated 'notation.toString()' resolution)
+                return resolve(notation, PathValidation.NONE);
+            }
+
+            public void describe(Collection<String> candidateFormats) {
+                candidateFormats.add("Anything that can be converted to a file, as per Project.file()");
+            }
+        };
+    }
+
     public File resolve(Object path, PathValidation validation) {
         File file = doResolve(path);
-        file = GFileUtils.canonicalise(file);
+
+        file = normalise(file);
+
         validate(file, validation);
+
         return file;
     }
 
-    public FileSource resolveLater(final Object path) {
-        return new FileSource() {
-            public File get() {
+    // normalizes a path in similar ways as File.getCanonicalFile(), except that it
+    // does NOT resolve symlinks (by design)
+    private File normalise(File file) {
+        try {
+            assert file.isAbsolute() : String.format("Cannot normalize a relative file: '%s'", file);
+
+            if (OperatingSystem.current().isWindows()) {
+                // on Windows, File.getCanonicalFile() doesn't resolve symlinks
+                return file.getCanonicalFile();
+            }
+
+            String[] segments = file.getPath().split(String.format("[/%s]", Pattern.quote(File.separator)));
+            List<String> path = new ArrayList<String>(segments.length);
+            for (String segment : segments) {
+                if (segment.equals("..")) {
+                    if (!path.isEmpty()) {
+                        path.remove(path.size() - 1);
+                    }
+                } else if (!segment.equals(".") && segment.length() > 0) {
+                    path.add(segment);
+                }
+            }
+
+            String resolvedPath = CollectionUtils.join(File.separator, path);
+            boolean needLeadingSeparator = File.listRoots()[0].getPath().startsWith(File.separator);
+            if (needLeadingSeparator) {
+                resolvedPath = File.separator + resolvedPath;
+            }
+            File candidate = new File(resolvedPath);
+            if (fileSystem.isCaseSensitive()) {
+                return candidate;
+            }
+
+            // Short-circuit the slower lookup method by using the canonical file
+            File canonical = candidate.getCanonicalFile();
+            if (candidate.getPath().equalsIgnoreCase(canonical.getPath())) {
+                return canonical;
+            }
+
+            // Canonical path is different to what we expected (eg there is a link somewhere in there). Normalise a segment at a time
+            // TODO - start resolving only from where the expected and canonical paths are different
+            File current = File.listRoots()[0];
+            for (int pos = 0; pos < path.size(); pos++) {
+                File child = findChild(current, path.get(pos));
+                if (child == null) {
+                    current = new File(current, CollectionUtils.join(File.separator, path.subList(pos, path.size())));
+                    break;
+                }
+                current = child;
+            }
+            return current;
+        } catch (IOException e) {
+            throw new UncheckedIOException(String.format("Could not normalize path for file '%s'.", file), e);
+        }
+    }
+
+    private File findChild(File current, String segment) throws IOException {
+        String[] children = current.list();
+        if (children == null) {
+            return null;
+        }
+        // TODO - find some native methods for doing this
+        for (String child : children) {
+            if (child.equalsIgnoreCase(segment)) {
+                return new File(current, child);
+            }
+        }
+        return new File(current, segment);
+    }
+
+    public Factory<File> resolveLater(final Object path) {
+        return new Factory<File>() {
+            public File create() {
                 return resolve(path);
             }
         };
@@ -68,7 +165,7 @@ public abstract class AbstractFileResolver implements FileResolver {
 
     protected URI convertObjectToURI(Object path) {
         Object object = unpack(path);
-        Object converted = convertToFileOrUri(object);
+        Object converted = fileNotationParser.parseNotation(object);
         if (converted instanceof File) {
             return resolve(converted).toURI();
         }
@@ -80,73 +177,12 @@ public abstract class AbstractFileResolver implements FileResolver {
         if (object == null) {
             return null;
         }
-        Object converted = convertToFileOrUri(object);
+        Object converted = fileNotationParser.parseNotation(object);
         if (converted instanceof File) {
             return (File) converted;
         }
         throw new InvalidUserDataException(String.format("Cannot convert URL '%s' to a file.", converted));
-    }
 
-    private Object convertToFileOrUri(Object path) {
-        if (path instanceof File) {
-            return path;
-        }
-
-        if (path instanceof URL) {
-            try {
-                path = ((URL) path).toURI();
-            } catch (URISyntaxException e) {
-                throw new UncheckedIOException(e);
-            }
-        }
-
-        if (path instanceof URI) {
-            URI uri = (URI) path;
-            if (uri.getScheme().equals("file")) {
-                return new File(uri.getPath());
-            }
-            return uri;
-        }
-
-        String str = path.toString();
-        if (str.startsWith("file:")) {
-            return new File(uriDecode(str.substring(5)));
-        }
-
-        for (File file : File.listRoots()) {
-            String rootPath = file.getAbsolutePath();
-            String normalisedStr = str;
-            if (!OperatingSystem.current().isCaseSensitiveFileSystem()) {
-                rootPath = rootPath.toLowerCase();
-                normalisedStr = normalisedStr.toLowerCase();
-            }
-            if (normalisedStr.startsWith(rootPath) || normalisedStr.startsWith(rootPath.replace(File.separatorChar,
-                    '/'))) {
-                return new File(str);
-            }
-        }
-
-        // Check if string starts with a URI scheme
-        if (URI_SCHEME.matcher(str).matches()) {
-            try {
-                return new URI(str);
-            } catch (URISyntaxException e) {
-                throw new UncheckedIOException(e);
-            }
-        }
-
-        return new File(str);
-    }
-
-    private String uriDecode(String path) {
-        StringBuffer builder = new StringBuffer();
-        Matcher matcher = ENCODED_URI.matcher(path);
-        while (matcher.find()) {
-            String val = matcher.group(1);
-            matcher.appendReplacement(builder, String.valueOf((char) (Integer.parseInt(val, 16))));
-        }
-        matcher.appendTail(builder);
-        return builder.toString();
     }
 
     private Object unpack(Object path) {
@@ -160,8 +196,8 @@ public abstract class AbstractFileResolver implements FileResolver {
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
-            } else if (current instanceof FileSource) {
-                return ((FileSource)current).get();
+            } else if (current instanceof Factory) {
+                return ((Factory) current).create();
             } else {
                 return current;
             }
@@ -206,5 +242,12 @@ public abstract class AbstractFileResolver implements FileResolver {
 
     public FileTree resolveFilesAsTree(Object... paths) {
         return resolveFiles(paths).getAsFileTree();
+    }
+
+    public ReadableResource resolveResource(Object path) {
+        if (path instanceof ReadableResource) {
+            return (ReadableResource) path;
+        }
+        return new FileResource(resolve(path));
     }
 }

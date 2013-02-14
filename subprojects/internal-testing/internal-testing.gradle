@@ -17,14 +17,19 @@
 /*
     Provides generally useful test utilities, used for unit and integration testing.
 */
-
 dependencies {
-    groovy libraries.groovy_depends
-    
-    // We depend on the classes of core as opposed to the jar because of the way AbstractClassPathProvider
-    // determines how to construct the classpath to start Gradle (i.e. to support testing from IDE)
-    compile project(":core").sourceSets.main.output, project(":core").configurations.compile
-         
-    compile libraries.xmlunit, libraries.junit, libraries.jmock, libraries.spock
-    runtime project(":coreImpl"), "xerces:xercesImpl:2.9.1"
+    groovy libraries.groovy
+
+    compile project(":baseServices")
+    compile project(":native")
+    compile libraries.commons_lang
+    compile libraries.commons_io
+    compile libraries.ant
+    compile libraries.junit
+    compile libraries.jmock
+    compile libraries.spock
+    compile libraries.jsoup
+    compile libraries.jsr305 //it is a guava dependency needed for compilation on ibm vm / windows
 }
+
+useClassycle()

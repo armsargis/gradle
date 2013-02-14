@@ -20,11 +20,12 @@ import java.util.Set;
 import java.util.HashSet;
 
 public class CommandLineOption {
-    private final Set<String> options = new HashSet();
+    private final Set<String> options = new HashSet<String>();
     private Class<?> argumentType = Void.TYPE;
     private String description;
     private String subcommand;
     private String deprecationWarning;
+    private boolean incubating;
 
     public CommandLineOption(Iterable<String> options) {
         for (String option : options) {
@@ -56,10 +57,25 @@ public class CommandLineOption {
     }
 
     public String getDescription() {
-        if (deprecationWarning == null) {
-            return description;
+        StringBuilder result = new StringBuilder();
+        if (description != null) {
+            result.append(description);
         }
-        return description + " [deprecated - " + deprecationWarning + "].";
+        if (deprecationWarning != null) {
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append("[deprecated - ");
+            result.append(deprecationWarning);
+            result.append("]");
+        }
+        if (incubating) {
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append("[incubating]");
+        }
+        return result.toString();
     }
 
     public CommandLineOption hasDescription(String description) {
@@ -80,6 +96,11 @@ public class CommandLineOption {
         return this;
     }
 
+    public CommandLineOption incubating() {
+        incubating = true;
+        return this;
+    }
+    
     public String getDeprecationWarning() {
         return deprecationWarning;
     }

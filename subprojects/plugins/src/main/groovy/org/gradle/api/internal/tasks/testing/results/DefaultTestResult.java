@@ -23,25 +23,29 @@ import java.util.List;
 
 public class DefaultTestResult implements TestResult, Serializable {
     private final List<Throwable> failures;
-    private final ResultType result;
+    private final ResultType resultType;
     private final long startTime;
     private final long endTime;
     private final long testCount;
     private final long successfulCount;
     private final long failedCount;
 
-    public DefaultTestResult(ResultType result, List<Throwable> failures, long startTime, long endTime, long testCount, long successfulCount, long failedCount) {
-        this.failures = failures;
-        this.result = result;
+    public DefaultTestResult(TestState state) {
+        this(state.resultType, state.getStartTime(), state.getEndTime(), state.testCount, state.successfulCount, state.failedCount, state.failures);
+    }
+
+    public DefaultTestResult(ResultType resultType, long startTime, long endTime, long testCount, long successfulCount, long failedCount, List<Throwable> failures) {
+        this.resultType = resultType;
         this.startTime = startTime;
         this.endTime = endTime;
         this.testCount = testCount;
         this.successfulCount = successfulCount;
         this.failedCount = failedCount;
+        this.failures = failures;
     }
 
     public ResultType getResultType() {
-        return result;
+        return resultType;
     }
 
     public Throwable getException() {
@@ -78,6 +82,6 @@ public class DefaultTestResult implements TestResult, Serializable {
 
     @Override
     public String toString() {
-        return result.toString();
+        return resultType.toString();
     }
 }

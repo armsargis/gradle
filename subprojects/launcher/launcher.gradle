@@ -3,13 +3,14 @@ configurations {
 }
 
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
+    compile project(':baseServices')
     compile project(':core')
+    compile project(':cli')
     compile project(':ui')
     compile project(':toolingApi')
-
-    compile libraries.jna
+    compile project(':native')
 
     compile libraries.slf4j_api
 
@@ -18,29 +19,63 @@ dependencies {
 
 useTestFixtures()
 
-jar.manifest.mainAttributes('Main-Class': "org.gradle.launcher.GradleMain")
-jar.doFirst {
-    jar.manifest.mainAttributes('Class-Path': "${project(':core').jar.archivePath.name}")
+jar {
+    manifest.mainAttributes('Main-Class': "org.gradle.launcher.GradleMain")
+    doFirst {
+        jar.manifest.mainAttributes('Class-Path': "${project(':core').jar.archivePath.name} ${project(':baseServices').jar.archivePath.name}")
+    }
 }
 
-task startScripts {
-    inputs.files configurations.startScriptGenerator
-    inputs.properties['classpath'] = jar.archiveName
-    outputs.dir startScriptsDir
+test {
+    forkEvery = 10
+}
 
-    doLast {
+task startScripts(type: StartScriptGenerator) {
+    startScriptsDir = new File("$buildDir/startScripts")
+    classpath = configurations.startScriptGenerator
+    launcherJar = jar.outputs.files
+}
+
+class StartScriptGenerator extends DefaultTask {
+    File startScriptsDir
+
+    @InputFiles
+    FileCollection classpath
+
+    @InputFiles
+    FileCollection launcherJar
+
+    @OutputFile
+    File getShellScript() {
+        return new File(startScriptsDir, "gradle")
+    }
+
+    @OutputFile
+    File getBatchFile() {
+        return new File(startScriptsDir, "gradle.bat")
+    }
+
+    @TaskAction
+    def generate() {
         logging.captureStandardOutput(LogLevel.INFO)
-        def factory = services.get(ClassLoaderFactory)
-        def classLoader = factory.createIsolatedClassLoader(configurations.startScriptGenerator.collect { it.toURI().toURL() })
-        def generator = classLoader.loadClass('org.gradle.api.internal.plugins.StartScriptGenerator').newInstance()
+        def generator = new org.gradle.api.internal.plugins.StartScriptGenerator()
         generator.applicationName = 'Gradle'
         generator.optsEnvironmentVar = 'GRADLE_OPTS'
         generator.exitEnvironmentVar = 'GRADLE_EXIT_CONSOLE'
         generator.mainClassName = 'org.gradle.launcher.GradleMain'
         generator.scriptRelPath = 'bin/gradle'
-        generator.classpath = ["lib/${jar.archiveName}" as String]
+        generator.classpath = ["lib/${launcherJar.singleFile.name}" as String]
         generator.appNameSystemProperty = 'org.gradle.appname'
-        generator.generateUnixScript(file("$startScriptsDir/gradle"))
-        generator.generateWindowsScript(file("$startScriptsDir/gradle.bat"))
+        generator.generateUnixScript(shellScript)
+        generator.generateWindowsScript(batchFile)
     }
 }
+
+daemonIntegTest {
+    //those tests are always using the daemon, they use exclusive daemons and they are a part of a regular check-in build anyway.
+    //since they are using exclusive daemons they don't contribute to the daemonIntegTest stress/load test.
+    //excluding to avoid unnecessary re-running and stealing resources.
+    exclude "org/gradle/launcher/daemon/**/*"
+}
+
+useClassycle()

@@ -17,6 +17,10 @@
                 <td><literal>project.testResultsDir</literal></td>
             </tr>
             <tr>
+                <td>binResultsDir</td>
+                <td><literal><replaceable>project.testResultsDir</replaceable>/binary/<replaceable>task.name</replaceable></literal></td>
+            </tr>
+            <tr>
                 <td>testReportDir</td>
                 <td><literal>project.testReportDir</literal></td>
             </tr>
@@ -100,6 +104,10 @@
                 <td>excludes</td>
                 <td>[]</td>
             </tr>
+            <tr>
+                <td>testLogging</td>
+                <td/>
+            </tr>
         </table>
     </section>
     <section>
@@ -115,6 +123,12 @@
             </tr>
             <tr>
                 <td>removeTestListener</td>
+            </tr>
+            <tr>
+                <td>addTestOutputListener</td>
+            </tr>
+            <tr>
+                <td>removeTestOutputListener</td>
             </tr>
             <tr>
                 <td>beforeSuite</td>
@@ -160,6 +174,15 @@
             </tr>
             <tr>
                 <td>copyTo</td>
+            </tr>
+            <tr>
+                <td>onOutput</td>
+            </tr>
+            <tr>
+                <td>testLogging</td>
+            </tr>
+            <tr>
+                <td>options</td>
             </tr>
         </table>
     </section>

@@ -41,7 +41,7 @@ public class DefaultArtifactsToModuleDescriptorConverter implements ArtifactsToM
 
     public final static ArtifactsExtraAttributesStrategy RESOLVE_STRATEGY = new ArtifactsExtraAttributesStrategy() {
         public Map<String, String> createExtraAttributes(PublishArtifact publishArtifact) {
-            return WrapUtil.toMap(DefaultIvyDependencyPublisher.FILE_PATH_EXTRA_ATTRIBUTE, publishArtifact.getFile().getAbsolutePath());
+            return WrapUtil.toMap(DefaultIvyDependencyPublisher.FILE_ABSOLUTE_PATH_EXTRA_ATTRIBUTE, publishArtifact.getFile().getAbsolutePath());
         }
     };
 
@@ -61,7 +61,7 @@ public class DefaultArtifactsToModuleDescriptorConverter implements ArtifactsToM
     }
 
     public Artifact createIvyArtifact(PublishArtifact publishArtifact, ModuleRevisionId moduleRevisionId) {
-        Map extraAttributes = artifactsExtraAttributesStrategy.createExtraAttributes(publishArtifact);
+        Map<String, String> extraAttributes = artifactsExtraAttributesStrategy.createExtraAttributes(publishArtifact);
         if (GUtil.isTrue(publishArtifact.getClassifier())) {
             extraAttributes.put(Dependency.CLASSIFIER, publishArtifact.getClassifier());
         }

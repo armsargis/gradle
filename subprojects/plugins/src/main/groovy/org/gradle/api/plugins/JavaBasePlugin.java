@@ -17,22 +17,28 @@
 package org.gradle.api.plugins;
 
 import org.gradle.api.*;
+import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.internal.ConventionMapping;
 import org.gradle.api.internal.IConventionAware;
 import org.gradle.api.internal.plugins.ProcessResources;
-import org.gradle.api.tasks.ConventionValue;
+import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.reporting.ReportingExtension;
 import org.gradle.api.tasks.Copy;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.compile.AbstractCompile;
-import org.gradle.api.tasks.compile.Compile;
+import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.javadoc.Javadoc;
 import org.gradle.api.tasks.testing.Test;
 import org.gradle.api.tasks.testing.TestDescriptor;
 import org.gradle.api.tasks.testing.TestListener;
 import org.gradle.api.tasks.testing.TestResult;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.util.WrapUtil;
 
+import javax.inject.Inject;
 import java.io.File;
+import java.util.concurrent.Callable;
 
 /**
  * <p>A {@link org.gradle.api.Plugin} which compiles and tests Java source, and assembles it into a JAR file.</p>
@@ -47,18 +53,25 @@ public class JavaBasePlugin implements Plugin<Project> {
     public static final String VERIFICATION_GROUP = "verification";
     public static final String DOCUMENTATION_GROUP = "documentation";
 
+    private final Instantiator instantiator;
+
+    @Inject
+    public JavaBasePlugin(Instantiator instantiator) {
+        this.instantiator = instantiator;
+    }
+
     public void apply(Project project) {
         project.getPlugins().apply(BasePlugin.class);
         project.getPlugins().apply(ReportingBasePlugin.class);
 
-        JavaPluginConvention javaConvention = new JavaPluginConvention(project);
+        JavaPluginConvention javaConvention = new JavaPluginConvention((ProjectInternal) project, instantiator);
         project.getConvention().getPlugins().put("java", javaConvention);
 
         configureCompileDefaults(project, javaConvention);
         configureSourceSetDefaults(javaConvention);
 
-        configureJavaDoc(project);
-        configureTest(project);
+        configureJavaDoc(project, javaConvention);
+        configureTest(project, javaConvention);
         configureCheck(project);
         configureBuild(project);
         configureBuildNeeded(project);
@@ -72,14 +85,34 @@ public class JavaBasePlugin implements Plugin<Project> {
 
                 ConventionMapping outputConventionMapping = ((IConventionAware) sourceSet.getOutput()).getConventionMapping();
 
-                outputConventionMapping.map("classesDir", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                ConfigurationContainer configurations = project.getConfigurations();
+
+                Configuration compileConfiguration = configurations.findByName(sourceSet.getCompileConfigurationName());
+                if (compileConfiguration == null) {
+                    compileConfiguration = configurations.add(sourceSet.getCompileConfigurationName());
+                }
+                compileConfiguration.setVisible(false);
+                compileConfiguration.setDescription(String.format("Classpath for compiling the %s sources.", sourceSet.getName()));
+
+                Configuration runtimeConfiguration = configurations.findByName(sourceSet.getRuntimeConfigurationName());
+                if (runtimeConfiguration == null) {
+                    runtimeConfiguration = configurations.add(sourceSet.getRuntimeConfigurationName());
+                }
+                runtimeConfiguration.setVisible(false);
+                runtimeConfiguration.extendsFrom(compileConfiguration);
+                runtimeConfiguration.setDescription(String.format("Classpath for running the compiled %s classes.", sourceSet.getName()));
+
+                sourceSet.setCompileClasspath(compileConfiguration);
+                sourceSet.setRuntimeClasspath(sourceSet.getOutput().plus(runtimeConfiguration));
+
+                outputConventionMapping.map("classesDir", new Callable<Object>() {
+                    public Object call() throws Exception {
                         String classesDirName = String.format("classes/%s", sourceSet.getName());
                         return new File(project.getBuildDir(), classesDirName);
                     }
                 });
-                outputConventionMapping.map("resourcesDir", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                outputConventionMapping.map("resourcesDir", new Callable<Object>() {
+                    public Object call() throws Exception {
                         String classesDirName = String.format("resources/%s", sourceSet.getName());
                         return new File(project.getBuildDir(), classesDirName);
                     }
@@ -91,19 +124,15 @@ public class JavaBasePlugin implements Plugin<Project> {
                 Copy processResources = project.getTasks().add(sourceSet.getProcessResourcesTaskName(), ProcessResources.class);
                 processResources.setDescription(String.format("Processes the %s.", sourceSet.getResources()));
                 ConventionMapping conventionMapping = processResources.getConventionMapping();
-                conventionMapping.map("defaultSource", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                        return sourceSet.getResources();
-                    }
-                });
-                conventionMapping.map("destinationDir", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                processResources.from(sourceSet.getResources());
+                conventionMapping.map("destinationDir", new Callable<Object>() {
+                    public Object call() throws Exception {
                         return sourceSet.getOutput().getResourcesDir();
                     }
                 });
 
                 String compileTaskName = sourceSet.getCompileJavaTaskName();
-                Compile compileJava = project.getTasks().add(compileTaskName, Compile.class);
+                JavaCompile compileJava = project.getTasks().add(compileTaskName, JavaCompile.class);
                 configureForSourceSet(sourceSet, compileJava);
 
                 Task classes = project.getTasks().add(sourceSet.getClassesTaskName());
@@ -121,18 +150,14 @@ public class JavaBasePlugin implements Plugin<Project> {
         ConventionMapping conventionMapping;
         compile.setDescription(String.format("Compiles the %s.", sourceSet.getJava()));
         conventionMapping = compile.getConventionMapping();
-        conventionMapping.map("classpath", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+        compile.setSource(sourceSet.getJava());
+        conventionMapping.map("classpath", new Callable<Object>() {
+            public Object call() throws Exception {
                 return sourceSet.getCompileClasspath();
             }
         });
-        conventionMapping.map("defaultSource", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                return sourceSet.getJava();
-            }
-        });
-        conventionMapping.map("destinationDir", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+        conventionMapping.map("destinationDir", new Callable<Object>() {
+            public Object call() throws Exception {
                 return sourceSet.getOutput().getClassesDir();
             }
         });
@@ -142,23 +167,23 @@ public class JavaBasePlugin implements Plugin<Project> {
         project.getTasks().withType(AbstractCompile.class, new Action<AbstractCompile>() {
             public void execute(final AbstractCompile compile) {
                 ConventionMapping conventionMapping = compile.getConventionMapping();
-                conventionMapping.map("sourceCompatibility", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                conventionMapping.map("sourceCompatibility", new Callable<Object>() {
+                    public Object call() throws Exception {
                         return javaConvention.getSourceCompatibility().toString();
                     }
                 });
-                conventionMapping.map("targetCompatibility", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                conventionMapping.map("targetCompatibility", new Callable<Object>() {
+                    public Object call() throws Exception {
                         return javaConvention.getTargetCompatibility().toString();
                     }
                 });
             }
         });
-        project.getTasks().withType(Compile.class, new Action<Compile>() {
-            public void execute(final Compile compile) {
+        project.getTasks().withType(JavaCompile.class, new Action<JavaCompile>() {
+            public void execute(final JavaCompile compile) {
                 ConventionMapping conventionMapping = compile.getConventionMapping();
-                conventionMapping.map("dependencyCacheDir", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                conventionMapping.map("dependencyCacheDir", new Callable<Object>() {
+                    public Object call() throws Exception {
                         return javaConvention.getDependencyCacheDir();
                     }
                 });
@@ -166,17 +191,17 @@ public class JavaBasePlugin implements Plugin<Project> {
         });
     }
 
-    private void configureJavaDoc(final Project project) {
+    private void configureJavaDoc(final Project project, final JavaPluginConvention convention) {
         project.getTasks().withType(Javadoc.class, new Action<Javadoc>() {
             public void execute(Javadoc javadoc) {
-                javadoc.getConventionMapping().map("destinationDir", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                        return new File(convention.getPlugin(JavaPluginConvention.class).getDocsDir(), "javadoc");
+                javadoc.getConventionMapping().map("destinationDir", new Callable<Object>() {
+                    public Object call() throws Exception {
+                        return new File(convention.getDocsDir(), "javadoc");
                     }
                 });
-                javadoc.getConventionMapping().map("title", new ConventionValue() {
-                    public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                        return convention.getPlugin(ReportingBasePluginConvention.class).getApiDocTitle();
+                javadoc.getConventionMapping().map("title", new Callable<Object>() {
+                    public Object call() throws Exception {
+                        return project.getExtensions().getByType(ReportingExtension.class).getApiDocTitle();
                     }
                 });
             }
@@ -211,10 +236,10 @@ public class JavaBasePlugin implements Plugin<Project> {
         buildTask.dependsOn(BUILD_TASK_NAME);
     }
 
-    private void configureTest(final Project project) {
+    private void configureTest(final Project project, final JavaPluginConvention convention) {
         project.getTasks().withType(Test.class, new Action<Test>() {
             public void execute(Test test) {
-                configureTestDefaults(test, project);
+                configureTestDefaults(test, project, convention);
             }
         });
         project.afterEvaluate(new Action<Project>() {
@@ -286,15 +311,20 @@ public class JavaBasePlugin implements Plugin<Project> {
         return value;
     }
 
-    private void configureTestDefaults(Test test, Project project) {
-        test.getConventionMapping().map("testResultsDir", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                return convention.getPlugin(JavaPluginConvention.class).getTestResultsDir();
+    private void configureTestDefaults(final Test test, Project project, final JavaPluginConvention convention) {
+        test.getConventionMapping().map("testResultsDir", new Callable<Object>() {
+            public Object call() throws Exception {
+                return convention.getTestResultsDir();
             }
         });
-        test.getConventionMapping().map("testReportDir", new ConventionValue() {
-            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                return convention.getPlugin(JavaPluginConvention.class).getTestReportDir();
+        test.getConventionMapping().map("testReportDir", new Callable<Object>() {
+            public Object call() throws Exception {
+                return convention.getTestReportDir();
+            }
+        });
+        test.getConventionMapping().map("binResultsDir", new Callable<Object>() {
+            public Object call() throws Exception {
+                return new File(convention.getTestResultsDir(), String.format("binary/%s", test.getName()));
             }
         });
         test.workingDir(project.getProjectDir());

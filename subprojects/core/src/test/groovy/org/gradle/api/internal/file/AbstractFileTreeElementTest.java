@@ -16,27 +16,35 @@
 package org.gradle.api.internal.file;
 
 import org.gradle.api.file.RelativePath;
+import org.gradle.internal.nativeplatform.filesystem.Chmod;
+import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.test.fixtures.file.TestFile;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.util.GFileUtils;
-import org.gradle.util.TemporaryFolder;
-import org.gradle.util.TestFile;
+import org.gradle.util.JUnit4GroovyMockery;
+import org.jmock.Expectations;
+import org.jmock.integration.junit4.JMock;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertThat;
 
+@RunWith(JMock.class)
 public class AbstractFileTreeElementTest {
     @Rule
-    public final TemporaryFolder tmpDir = new TemporaryFolder();
+    public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
+    final JUnit4GroovyMockery context = new JUnit4GroovyMockery();
+    final Chmod chmod = context.mock(Chmod.class);
 
     @Test
     public void canCopyToOutputStream() {
-        TestFile src = tmpDir.file("src");
-        src.write("content");
+        TestFile src = writeToFile("src", "content");
 
         ByteArrayOutputStream outstr = new ByteArrayOutputStream();
         new TestFileTreeElement(src).copyTo(outstr);
@@ -46,21 +54,57 @@ public class AbstractFileTreeElementTest {
 
     @Test
     public void canCopyToFile() {
-        TestFile src = tmpDir.file("src");
-        src.write("content");
+        TestFile src = writeToFile("src", "content");
         TestFile dest = tmpDir.file("dir/dest");
+
+        context.checking(new Expectations(){{
+            ignoring(chmod);
+        }});
 
         new TestFileTreeElement(src).copyTo(dest);
 
         dest.assertIsFile();
         assertThat(dest.getText(), equalTo("content"));
     }
-    
+
+    @Test
+    public void copiedFileHasExpectedPermissions() throws Exception {
+        TestFile src = writeToFile("src", "");
+        final TestFile dest = tmpDir.file("dest");
+
+        context.checking(new Expectations(){{
+            one(chmod).chmod(dest, 0666);
+        }});
+
+        new TestFileTreeElement(src, 0666).copyTo(dest);
+    }
+
+    @Test
+    public void defaultPermissionValuesAreUsed() {
+        TestFileTreeElement dir = new TestFileTreeElement(tmpDir.getTestDirectory());
+        TestFileTreeElement file = new TestFileTreeElement(tmpDir.file("someFile"));
+
+        assertThat(dir.getMode(), equalTo(FileSystem.DEFAULT_DIR_MODE));
+        assertThat(file.getMode(), equalTo(FileSystem.DEFAULT_FILE_MODE));
+    }
+
+    private TestFile writeToFile(String name, String content) {
+        TestFile result = tmpDir.file(name);
+        result.write(content);
+        return result;
+    }
+
     private class TestFileTreeElement extends AbstractFileTreeElement {
         private final TestFile file;
+        private final Integer mode;
 
         public TestFileTreeElement(TestFile file) {
+            this(file, null);
+        }
+
+        public TestFileTreeElement(TestFile file, Integer mode) {
             this.file = file;
+            this.mode = mode;
         }
 
         public String getDisplayName() {
@@ -83,12 +127,21 @@ public class AbstractFileTreeElementTest {
             return file.length();
         }
 
+        @Override
+        protected Chmod getChmod() {
+            return chmod;
+        }
+
         public RelativePath getRelativePath() {
             throw new UnsupportedOperationException();
         }
 
         public InputStream open() {
             return GFileUtils.openInputStream(file);
+        }
+
+        public int getMode() {
+            return mode == null ? super.getMode() : mode;
         }
     }
 }

@@ -15,43 +15,29 @@
  */
 package org.gradle.api.internal.file.archive;
 
+import org.apache.tools.tar.TarEntry;
+import org.apache.tools.tar.TarOutputStream;
+import org.apache.tools.zip.UnixStat;
 import org.gradle.api.GradleException;
 import org.gradle.api.UncheckedIOException;
-import org.gradle.api.internal.file.copy.CopyAction;
 import org.gradle.api.file.FileVisitDetails;
-import org.apache.tools.tar.TarOutputStream;
-import org.apache.tools.tar.TarEntry;
-import org.apache.tools.bzip2.CBZip2OutputStream;
-import org.apache.tools.zip.UnixStat;
+import org.gradle.api.internal.file.copy.ArchiveCopyAction;
+import org.gradle.api.internal.file.copy.CopyAction;
 import org.gradle.api.internal.file.copy.EmptyCopySpecVisitor;
-import org.gradle.api.internal.file.copy.ReadableCopySpec;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.zip.GZIPOutputStream;
 
 public class TarCopySpecVisitor extends EmptyCopySpecVisitor {
     private TarOutputStream tarOutStr;
     private File tarFile;
-    private ReadableCopySpec spec;
 
     public void startVisit(CopyAction action) {
-        TarCopyAction archiveAction = (TarCopyAction) action;
+        ArchiveCopyAction archiveAction = (ArchiveCopyAction) action;
         try {
             tarFile = archiveAction.getArchivePath();
-            OutputStream outStr = new FileOutputStream(tarFile);
-            switch (archiveAction.getCompression()) {
-                case GZIP:
-                    outStr = new GZIPOutputStream(outStr);
-                    break;
-                case BZIP2:
-                    outStr.write('B');
-                    outStr.write('Z');
-                    outStr = new CBZip2OutputStream(outStr);
-                    break;
-            }
+            OutputStream outStr = archiveAction.getCompressor().createArchiveOutputStream(tarFile);
             tarOutStr = new TarOutputStream(outStr);
             tarOutStr.setLongFileMode(TarOutputStream.LONGFILE_GNU);
         } catch (Exception e) {
@@ -66,12 +52,7 @@ public class TarCopySpecVisitor extends EmptyCopySpecVisitor {
             throw new UncheckedIOException(e);
         } finally {
             tarOutStr = null;
-            spec = null;
         }
-    }
-
-    public void visitSpec(ReadableCopySpec spec) {
-        this.spec = spec;
     }
 
     public void visitFile(FileVisitDetails fileDetails) {
@@ -79,7 +60,7 @@ public class TarCopySpecVisitor extends EmptyCopySpecVisitor {
             TarEntry archiveEntry = new TarEntry(fileDetails.getRelativePath().getPathString());
             archiveEntry.setModTime(fileDetails.getLastModified());
             archiveEntry.setSize(fileDetails.getSize());
-            archiveEntry.setMode(UnixStat.FILE_FLAG | spec.getFileMode());
+            archiveEntry.setMode(UnixStat.FILE_FLAG | fileDetails.getMode());
             tarOutStr.putNextEntry(archiveEntry);
             fileDetails.copyTo(tarOutStr);
             tarOutStr.closeEntry();
@@ -93,7 +74,7 @@ public class TarCopySpecVisitor extends EmptyCopySpecVisitor {
             // Trailing slash on name indicates entry is a directory
             TarEntry archiveEntry = new TarEntry(dirDetails.getRelativePath().getPathString() + '/');
             archiveEntry.setModTime(dirDetails.getLastModified());
-            archiveEntry.setMode(UnixStat.DIR_FLAG | spec.getDirMode());
+            archiveEntry.setMode(UnixStat.DIR_FLAG | dirDetails.getMode());
             tarOutStr.putNextEntry(archiveEntry);
             tarOutStr.closeEntry();
         } catch (Exception e) {

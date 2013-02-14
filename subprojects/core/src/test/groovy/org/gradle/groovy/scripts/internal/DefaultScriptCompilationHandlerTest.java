@@ -27,13 +27,12 @@ import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.Phases;
 import org.codehaus.groovy.control.SourceUnit;
 import org.gradle.api.GradleException;
-import org.gradle.api.ScriptCompilationException;
-import org.gradle.api.internal.artifacts.dsl.AbstractScriptTransformer;
 import org.gradle.api.internal.resource.Resource;
+import org.gradle.groovy.scripts.ScriptCompilationException;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.groovy.scripts.StringScriptSource;
 import org.gradle.groovy.scripts.Transformer;
-import org.gradle.util.TemporaryFolder;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
@@ -47,6 +46,7 @@ import java.io.File;
 import java.io.IOException;
 
 import static org.gradle.util.Matchers.containsLine;
+import static org.gradle.util.Matchers.isA;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
@@ -75,7 +75,7 @@ public class DefaultScriptCompilationHandlerTest {
 
     private JUnit4Mockery context = new JUnit4Mockery();
     @Rule
-    public TemporaryFolder tmpDir = new TemporaryFolder();
+    public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
 
     @Before
     public void setUp() throws IOException, ClassNotFoundException {
@@ -153,7 +153,7 @@ public class DefaultScriptCompilationHandlerTest {
 
         Script script = scriptCompilationHandler.loadFromDir(scriptSource, classLoader, scriptCacheDir,
                 expectedScriptClass).newInstance();
-        assertThat(script, is(expectedScriptClass));
+        assertThat(script, isA(expectedScriptClass));
     }
 
     @Test
@@ -165,7 +165,7 @@ public class DefaultScriptCompilationHandlerTest {
 
         Script script = scriptCompilationHandler.loadFromDir(scriptSource, classLoader, scriptCacheDir,
                 expectedScriptClass).newInstance();
-        assertThat(script, is(expectedScriptClass));
+        assertThat(script, isA(expectedScriptClass));
     }
 
     @Test
@@ -177,7 +177,7 @@ public class DefaultScriptCompilationHandlerTest {
 
         Script script = scriptCompilationHandler.loadFromDir(scriptSource, classLoader, scriptCacheDir,
                 expectedScriptClass).newInstance();
-        assertThat(script, is(expectedScriptClass));
+        assertThat(script, isA(expectedScriptClass));
     }
 
     @Test
@@ -189,7 +189,7 @@ public class DefaultScriptCompilationHandlerTest {
 
         Script script = scriptCompilationHandler.loadFromDir(scriptSource, classLoader, scriptCacheDir,
                 expectedScriptClass).newInstance();
-        assertThat(script, is(expectedScriptClass));
+        assertThat(script, isA(expectedScriptClass));
     }
 
     @Test
@@ -201,7 +201,7 @@ public class DefaultScriptCompilationHandlerTest {
 
         Script script = scriptCompilationHandler.loadFromDir(scriptSource, classLoader, scriptCacheDir,
                 expectedScriptClass).newInstance();
-        assertThat(script, is(expectedScriptClass));
+        assertThat(script, isA(expectedScriptClass));
     }
 
     @Test

@@ -24,8 +24,8 @@ import org.gradle.api.tasks.bundling.War
 import org.gradle.util.HelperUtil
 import org.junit.Before
 import org.junit.Test
-import static org.gradle.util.Matchers.*
-import static org.gradle.util.WrapUtil.*
+import static org.gradle.util.Matchers.dependsOn
+import static org.gradle.util.WrapUtil.toSet
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
 
@@ -82,7 +82,7 @@ class WarPluginTest {
         assertThat(task.destinationDir, equalTo(project.libsDir))
 
         task = project.tasks[BasePlugin.ASSEMBLE_TASK_NAME]
-        assertThat(task, dependsOn(JavaPlugin.JAR_TASK_NAME, WarPlugin.WAR_TASK_NAME))
+        assertThat(task, dependsOn(WarPlugin.WAR_TASK_NAME))
     }
 
     @Test public void dependsOnRuntimeConfig() {
@@ -120,14 +120,12 @@ class WarPluginTest {
     @Test public void appliesMappingsToArchiveTasks() {
         warPlugin.apply(project)
 
-        def task = project.createTask('customWar', type: War)
+        def task = project.task('customWar', type: War)
         assertThat(task, dependsOn(hasItems(JavaPlugin.CLASSES_TASK_NAME)))
         assertThat(task.destinationDir, equalTo(project.libsDir))
-
-        assertThat(project.tasks[BasePlugin.ASSEMBLE_TASK_NAME], dependsOn(JavaPlugin.JAR_TASK_NAME, WarPlugin.WAR_TASK_NAME, 'customWar'))
     }
 
-    @Test public void addsDefaultWarToArchiveConfiguration() {
+    @Test public void replacesJarAsPublication() {
         warPlugin.apply(project)
 
         Configuration archiveConfiguration = project.getConfigurations().getByName(Dependency.ARCHIVES_CONFIGURATION);

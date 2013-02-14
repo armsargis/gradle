@@ -15,7 +15,7 @@
  */
 package org.gradle.cli
 
-import spock.lang.Specification
+import spock.lang.*
 
 class CommandLineParserTest extends Specification {
     private final CommandLineParser parser = new CommandLineParser()
@@ -341,7 +341,7 @@ class CommandLineParserTest extends Specification {
         parser.option('another-long-option').hasDescription('this is a long option')
         parser.option('z', 'y', 'last-option', 'end-option').hasDescription('this is the last option')
         parser.option('B')
-        def outstr = new ByteArrayOutputStream()
+        def outstr = new StringWriter()
 
         expect:
         parser.printUsage(outstr)
@@ -353,25 +353,41 @@ class CommandLineParserTest extends Specification {
                 '-y, -z, --end-option, --last-option  this is the last option'
         ]
     }
+    
+    def formatsUsageMessageForDeprecatedAndIncubatingOptions() {
+        parser.option('a', 'long-option').hasDescription('this is option a').deprecated("don't use this")
+        parser.option('b').deprecated('will be removed')
+        parser.option('c').hasDescription('option c').incubating()
+        parser.option('d').incubating()
+        def outstr = new StringWriter()
+
+        expect:
+        parser.printUsage(outstr)
+        outstr.toString().readLines() == [
+                '-a, --long-option  this is option a [deprecated - don\'t use this]',
+                '-b                 [deprecated - will be removed]',
+                '-c                 option c [incubating]',
+                '-d                 [incubating]'
+        ]
+    }
 
     def showsDeprecationWarning() {
-        def parser = new CommandLineParser()
-        parser.option("foo").hasDescription("usless option, just for testing").deprecated("deprecated. Please use --bar instead.")
+        def outstr = new StringWriter()
+        def parser = new CommandLineParser(outstr)
+        parser.option("foo").hasDescription("usless option, just for testing").deprecated("Please use --bar instead.")
         parser.option("x").hasDescription("I'm not deprecated")
 
         when:
-        parser.deprecationPrinter = new ByteArrayOutputStream()
         parser.parse(["-x"])
 
         then:
-        parser.deprecationPrinter.toString() == ''
+        outstr.toString() == ''
 
         when:
-        parser.deprecationPrinter = new ByteArrayOutputStream()
         parser.parse(["--foo"])
 
         then:
-        parser.deprecationPrinter.toString().contains("deprecated. Please use --bar instead.")
+        outstr.toString().startsWith("The --foo option is deprecated - Please use --bar instead.")
     }
 
     def parseFailsWhenCommandLineContainsUnknownShortOption() {
@@ -565,4 +581,59 @@ class CommandLineParserTest extends Specification {
         def e = thrown(CommandLineArgumentException)
         e.message == 'Command-line option \'-a\' does not take an argument.'
     }
+    
+    def "allow unknown options mode collects unknown options"() {
+        given:
+        parser.option("a")
+
+        and:
+        parser.allowUnknownOptions()
+
+        when:
+        def result = parser.parse(['-a', '-b', '--long-option'])
+
+        then:
+        result.option("a") != null
+        
+        and:
+        result.extraArguments == ['-b', '--long-option']
+    }
+
+    def "allow unknown options mode collects unknown short options combined with known short options"() {
+        given:
+        parser.option("a")
+        parser.option("Z")
+
+        and:
+        parser.allowUnknownOptions()
+
+        when:
+        def result = parser.parse(['-abCdZ'])
+
+        then:
+        result.option("a") != null
+        result.option("Z") != null
+
+        and:
+        result.extraArguments == ["-b", "-C", "-d"]
+    }
+
+    @Issue("http://issues.gradle.org/browse/GRADLE-1871")
+    def "unknown options containing known arguments in their value are allowed"() {
+        given:
+        parser.option("a")
+
+        and:
+        parser.allowUnknownOptions()
+
+        when:
+        def result = parser.parse(['-a', '-ba', '-ba=c'])
+
+        then:
+        result.option("a") != null
+        
+        and:
+        result.extraArguments == ['-ba', '-ba=c']
+    }
+
 }

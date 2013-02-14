@@ -25,13 +25,12 @@ import org.gradle.api.internal.artifacts.dependencies.DefaultClientModule;
 import org.gradle.api.internal.artifacts.ivyservice.IvyUtil;
 import org.gradle.util.WrapUtil;
 import org.hamcrest.Matchers;
-import static org.hamcrest.Matchers.equalTo;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JUnit4Mockery;
-import static org.junit.Assert.*;
 import org.junit.Test;
 
-import java.util.HashMap;
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.*;
 
 /**
  * @author Hans Dockter
@@ -40,11 +39,10 @@ public class ClientModuleDependencyDescriptorFactoryTest extends AbstractDepende
     private JUnit4Mockery context = new JUnit4Mockery();
 
     private ModuleDescriptorFactoryForClientModule moduleDescriptorFactoryForClientModule = context.mock(ModuleDescriptorFactoryForClientModule.class);
-    private HashMap clientModuleRegistry = new HashMap();
-    private ClientModuleDependencyDescriptorFactory clientModuleDependencyDescriptorFactory = new ClientModuleDependencyDescriptorFactory(
+    private ClientModuleIvyDependencyDescriptorFactory clientModuleDependencyDescriptorFactory = new ClientModuleIvyDependencyDescriptorFactory(
             excludeRuleConverterStub,
-            moduleDescriptorFactoryForClientModule,
-            clientModuleRegistry);
+            moduleDescriptorFactoryForClientModule
+    );
 
     @Test
     public void canConvert() {
@@ -56,8 +54,7 @@ public class ClientModuleDependencyDescriptorFactoryTest extends AbstractDepende
     public void testAddDependencyDescriptorForClientModule() {
         final ModuleDependency dependencyDependency = context.mock(ModuleDependency.class, "dependencyDependency");
         final DefaultClientModule clientModule = new DefaultClientModule("org.gradle", "gradle-core", "1.0", TEST_DEP_CONF);
-        final ModuleRevisionId testModuleRevisionId = IvyUtil.createModuleRevisionId(
-                clientModule, WrapUtil.toMap(ClientModule.CLIENT_MODULE_KEY, clientModule.getId()));
+        final ModuleRevisionId testModuleRevisionId = IvyUtil.createModuleRevisionId(clientModule);
 
         setUpDependency(clientModule);
         clientModule.addDependency(dependencyDependency);
@@ -70,29 +67,26 @@ public class ClientModuleDependencyDescriptorFactoryTest extends AbstractDepende
             will(returnValue(moduleDescriptorForClientModule));
         }});
 
-        clientModuleDependencyDescriptorFactory.addDependencyDescriptor(TEST_CONF, moduleDescriptor, clientModule);
-        assertThat((ModuleDescriptor) clientModuleRegistry.get(clientModule.getId()), equalTo(moduleDescriptorForClientModule));
-        DefaultDependencyDescriptor dependencyDescriptor = (DefaultDependencyDescriptor) moduleDescriptor.getDependencies()[0];
+        DefaultDependencyDescriptor dependencyDescriptor = clientModuleDependencyDescriptorFactory.createDependencyDescriptor(TEST_CONF, clientModule, moduleDescriptor);
         assertDependencyDescriptorHasCommonFixtureValues(dependencyDescriptor);
-        assertEquals(testModuleRevisionId,
-                dependencyDescriptor.getDependencyRevisionId());
+        assertEquals(testModuleRevisionId, dependencyDescriptor.getDependencyRevisionId());
         assertFalse(dependencyDescriptor.isChanging());
     }
 
     @Test
     public void testAddWithNullGroupAndNullVersionShouldHaveEmptyStringModuleRevisionValues() {
-        ClientModule clientModule = new DefaultClientModule(null, "gradle-core", null, TEST_DEP_CONF);
-        final ModuleRevisionId testModuleRevisionId = IvyUtil.createModuleRevisionId(
-                clientModule, WrapUtil.toMap(ClientModule.CLIENT_MODULE_KEY, clientModule.getId()));
+        final ClientModule clientModule = new DefaultClientModule(null, "gradle-core", null, TEST_DEP_CONF);
+        final ModuleRevisionId testModuleRevisionId = IvyUtil.createModuleRevisionId(clientModule);
+        final ModuleDescriptor moduleDescriptorForClientModule = context.mock(ModuleDescriptor.class);
         context.checking(new Expectations() {{
             allowing(moduleDescriptorFactoryForClientModule).createModuleDescriptor(
                     testModuleRevisionId,
                     WrapUtil.<ModuleDependency>toSet()
             );
+            will(returnValue(moduleDescriptorForClientModule));
         }});
 
-        clientModuleDependencyDescriptorFactory.addDependencyDescriptor(TEST_CONF, moduleDescriptor, clientModule);
-        DefaultDependencyDescriptor dependencyDescriptor = (DefaultDependencyDescriptor) moduleDescriptor.getDependencies()[0];
+        DefaultDependencyDescriptor dependencyDescriptor = clientModuleDependencyDescriptorFactory.createDependencyDescriptor(TEST_CONF, clientModule, moduleDescriptor);
         assertThat(dependencyDescriptor.getDependencyRevisionId(), equalTo(testModuleRevisionId));
     }
 }

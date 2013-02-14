@@ -18,7 +18,7 @@ package org.gradle.api.internal.tasks;
 import groovy.lang.Closure;
 import org.gradle.api.Namer;
 import org.gradle.api.internal.AbstractNamedDomainObjectContainer;
-import org.gradle.api.internal.Instantiator;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
@@ -37,7 +37,7 @@ public class DefaultSourceSetContainer extends AbstractNamedDomainObjectContaine
 
     @Override
     protected SourceSet doCreate(String name) {
-        DefaultSourceSet sourceSet = instantiator.newInstance(DefaultSourceSet.class, name, fileResolver, taskResolver);
+        DefaultSourceSet sourceSet = instantiator.newInstance(DefaultSourceSet.class, name, fileResolver);
         sourceSet.setClasses(instantiator.newInstance(DefaultSourceSetOutput.class, sourceSet.getDisplayName(), fileResolver, taskResolver));
 
         return sourceSet;

@@ -19,9 +19,10 @@ import org.gradle.api.Action;
 import org.gradle.api.file.FileCopyDetails;
 import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.RelativePath;
+import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.test.fixtures.file.TestFile;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.util.HelperUtil;
-import org.gradle.util.TemporaryFolder;
-import org.gradle.util.TestFile;
 import org.hamcrest.Description;
 import org.jmock.Expectations;
 import org.jmock.Sequence;
@@ -35,21 +36,24 @@ import org.junit.runner.RunWith;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 
 import static org.gradle.util.Matchers.*;
-import static org.gradle.util.WrapUtil.*;
+import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
 @RunWith(JMock.class)
 public class MappingCopySpecVisitorTest {
     private final JUnit4Mockery context = new JUnit4Mockery();
+
     @Rule
-    public final TemporaryFolder tmpDir = new TemporaryFolder();
+    public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private final CopySpecVisitor delegate = context.mock(CopySpecVisitor.class);
-    private final MappingCopySpecVisitor visitor = new MappingCopySpecVisitor(delegate);
     private final ReadableCopySpec spec = context.mock(ReadableCopySpec.class);
     private final FileVisitDetails details = context.mock(FileVisitDetails.class);
+    private final FileSystem fileSystem = context.mock(FileSystem.class);
+    private final MappingCopySpecVisitor visitor = new MappingCopySpecVisitor(delegate, fileSystem);
 
     @Test
     public void delegatesStartAndEndVisitMethods() {
@@ -77,13 +81,15 @@ public class MappingCopySpecVisitorTest {
 
     @Test
     public void visitFileInvokesEachCopyAction() {
+        @SuppressWarnings("unchecked")
         final Action<FileCopyDetails> action1 = context.mock(Action.class, "action1");
+        @SuppressWarnings("unchecked")
         final Action<FileCopyDetails> action2 = context.mock(Action.class, "action2");
         final Collector<FileCopyDetails> collectDetails1 = collector();
         final Collector<Object> collectDetails2 = collector();
         final Collector<Object> collectDetails3 = collector();
 
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             Sequence seq = context.sequence("seq");
             one(delegate).visitSpec(spec);
             inSequence(seq);
@@ -115,7 +121,7 @@ public class MappingCopySpecVisitorTest {
     public void initialRelativePathForFileIsSpecPathPlusFilePath() {
         FileCopyDetails copyDetails = expectActionExecutedWhenFileVisited();
 
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             allowing(spec).getDestPath();
             will(returnValue(new RelativePath(false, "spec")));
             allowing(details).getRelativePath();
@@ -124,12 +130,12 @@ public class MappingCopySpecVisitorTest {
 
         assertThat(copyDetails.getRelativePath(), equalTo(new RelativePath(true, "spec", "file")));
     }
-    
+
     @Test
     public void relativePathForDirIsSpecPathPlusFilePath() {
         FileVisitDetails visitDetails = expectSpecAndDirVisited();
 
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             allowing(spec).getDestPath();
             will(returnValue(new RelativePath(false, "spec")));
             allowing(details).getRelativePath();
@@ -156,10 +162,12 @@ public class MappingCopySpecVisitorTest {
 
     @Test
     public void copyActionCanExcludeFile() {
+        @SuppressWarnings("unchecked")
         final Action<FileCopyDetails> action1 = context.mock(Action.class, "action1");
+        @SuppressWarnings("unchecked")
         final Action<FileCopyDetails> action2 = context.mock(Action.class, "action2");
 
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             Sequence seq = context.sequence("seq");
             one(delegate).visitSpec(spec);
             inSequence(seq);
@@ -196,7 +204,11 @@ public class MappingCopySpecVisitorTest {
     public void copyActionCanFilterContentWhenFileIsCopiedToFile() {
         final FileCopyDetails mappedDetails = expectActionExecutedWhenFileVisited();
 
+        // shortcut the permission logic by explicitly setting permissions
+        mappedDetails.setMode(0644);
+
         context.checking(new Expectations() {{
+
             one(details).open();
             will(returnValue(new ByteArrayInputStream("content".getBytes())));
             one(details).isDirectory();
@@ -207,9 +219,24 @@ public class MappingCopySpecVisitorTest {
 
         mappedDetails.filter(HelperUtil.toClosure("{ 'PREFIX: ' + it } "));
 
-        TestFile destDir = tmpDir.getDir().file("test.txt");
+        TestFile destDir = tmpDir.getTestDirectory().file("test.txt");
         mappedDetails.copyTo(destDir);
         destDir.assertContents(equalTo("PREFIX: content"));
+    }
+
+    @Test
+    public void explicitFileModeDefinitionIsAppliedToTarget() throws IOException {
+        final FileCopyDetails mappedDetails = expectActionExecutedWhenFileVisited();
+        final TestFile destFile = tmpDir.getTestDirectory().file("test.txt").createFile();
+
+        // set file permissions explicitly
+        mappedDetails.setMode(0645);
+        context.checking(new Expectations() {{
+            one(details).copyTo(destFile);
+            will(returnValue(true));
+            one(fileSystem).chmod(destFile, 0645);
+        }});
+        mappedDetails.copyTo(destFile);
     }
 
     @Test
@@ -239,6 +266,63 @@ public class MappingCopySpecVisitorTest {
         assertThat(mappedDetails.getFile(), sameInstance(file));
     }
 
+    @Test
+    public void permissionsArePreservedByDefault() {
+        FileCopyDetails copyDetails = expectActionExecutedWhenFileVisited();
+
+        context.checking(new Expectations() {{
+            one(details).isDirectory();
+            will(returnValue(true));
+
+            one(spec).getDirMode();
+            will(returnValue(null));
+
+            one(details).getMode();
+            will(returnValue(123));
+        }});
+
+        assertThat(copyDetails.getMode(), equalTo(123));
+    }
+
+    @Test
+    public void filePermissionsCanBeOverriddenBySpec() {
+        FileCopyDetails copyDetails = expectActionExecutedWhenFileVisited();
+
+        context.checking(new Expectations() {{
+            one(details).isDirectory();
+            will(returnValue(false));
+
+            one(spec).getFileMode();
+            will(returnValue(234));
+        }});
+
+        assertThat(copyDetails.getMode(), equalTo(234));
+    }
+
+
+    @Test
+    public void directoryPermissionsCanBeOverriddenBySpec() {
+        FileCopyDetails copyDetails = expectActionExecutedWhenFileVisited();
+
+        context.checking(new Expectations() {{
+            one(details).isDirectory();
+            will(returnValue(true));
+
+            one(spec).getDirMode();
+            will(returnValue(345));
+        }});
+
+        assertThat(copyDetails.getMode(), equalTo(345));
+    }
+
+    @Test
+    public void permissionsCanBeOverriddenByCopyAction() {
+        FileCopyDetails copyDetails = expectActionExecutedWhenFileVisited();
+
+        copyDetails.setMode(456);
+        assertThat(copyDetails.getMode(), equalTo(456));
+    }
+
     private FileVisitDetails expectSpecAndFileVisited() {
         final Collector<FileVisitDetails> collector = collector();
 
@@ -259,9 +343,10 @@ public class MappingCopySpecVisitorTest {
 
     private FileCopyDetails expectActionExecutedWhenFileVisited() {
         final Collector<FileCopyDetails> collectDetails = collector();
+        @SuppressWarnings("unchecked")
         final Action<FileCopyDetails> action = context.mock(Action.class, "action1");
 
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             Sequence seq = context.sequence("seq");
             one(delegate).visitSpec(spec);
             inSequence(seq);
@@ -280,8 +365,7 @@ public class MappingCopySpecVisitorTest {
         visitor.visitSpec(spec);
         visitor.visitFile(details);
 
-        FileCopyDetails copyDetails = collectDetails.get();
-        return copyDetails;
+        return collectDetails.get();
     }
 
     private FileVisitDetails expectSpecAndDirVisited() {
@@ -313,5 +397,4 @@ public class MappingCopySpecVisitorTest {
             }
         };
     }
-    
 }

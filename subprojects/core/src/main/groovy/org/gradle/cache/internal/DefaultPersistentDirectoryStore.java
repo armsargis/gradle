@@ -15,30 +15,130 @@
  */
 package org.gradle.cache.internal;
 
-import org.gradle.cache.PersistentCache;
-import org.gradle.util.UncheckedException;
+import org.gradle.api.Action;
+import org.gradle.cache.*;
+import org.gradle.internal.Factory;
+import org.gradle.messaging.serialize.Serializer;
+import org.gradle.util.GFileUtils;
 
 import java.io.File;
 import java.io.IOException;
 
-public class DefaultPersistentDirectoryStore implements PersistentCache {
+public class DefaultPersistentDirectoryStore implements ReferencablePersistentCache {
     private final File dir;
+    private final FileLockManager.LockMode lockMode;
+    private final FileLockManager lockManager;
+    private final String displayName;
+    private DefaultCacheAccess cacheAccess;
 
-    public DefaultPersistentDirectoryStore(File dir) {
+    public DefaultPersistentDirectoryStore(File dir, String displayName, FileLockManager.LockMode lockMode, FileLockManager fileLockManager) {
         this.dir = dir;
-        dir.mkdirs();
+        this.lockMode = lockMode;
+        this.lockManager = fileLockManager;
+        this.displayName = displayName != null ? String.format("%s (%s)", displayName, dir) : String.format("cache directory %s (%s)", dir.getName(), dir);
+    }
 
-        // Create an empty cache.properties file. This is because Gradle 1.0-milestone-4 will delete the store if it does not find this marker file.
-        // TODO - Remove this file when we no longer care about 1.0-milestone-4
+    public DefaultPersistentDirectoryStore open() {
+        GFileUtils.mkdirs(dir);
+        cacheAccess = createCacheAccess();
         try {
-            File markerFile = new File(dir, "cache.properties");
-            markerFile.createNewFile();
-        } catch (IOException e) {
-            throw UncheckedException.asUncheckedException(e);
+            cacheAccess.open(lockMode);
+            try {
+                init();
+            } catch (Throwable throwable) {
+                if (cacheAccess != null) {
+                    cacheAccess.close();
+                }
+                throw throwable;
+            }
+        } catch (Throwable e) {
+            throw new CacheOpenException(String.format("Could not open %s.", this), e);
         }
+
+        return this;
+    }
+
+    private DefaultCacheAccess createCacheAccess() {
+        return new DefaultCacheAccess(displayName, getLockTarget(), lockManager);
+    }
+
+    protected void withExclusiveLock(Action<FileLock> action) {
+        if (cacheAccess != null && (cacheAccess.getFileLock().getMode() == FileLockManager.LockMode.Exclusive)) {
+            action.execute(getLock());
+        } else {
+            boolean reopen = cacheAccess != null;
+            close();
+            DefaultCacheAccess exclusiveAccess = createCacheAccess();
+            exclusiveAccess.open(FileLockManager.LockMode.Exclusive);
+            try {
+                action.execute(exclusiveAccess.getFileLock());
+            } finally {
+                exclusiveAccess.close();
+            }
+            if (reopen) {
+                cacheAccess = createCacheAccess();
+                cacheAccess.open(lockMode);
+            }
+        }
+    }
+
+
+    protected File getLockTarget() {
+        return dir;
+    }
+
+    protected void init() throws IOException {
+    }
+
+    public void close() {
+        if (cacheAccess != null) {
+            try {
+                cacheAccess.close();
+            } finally {
+                cacheAccess = null;
+            }
+        }
+
+    }
+
+    public FileLock getLock() {
+        return cacheAccess.getFileLock();
     }
 
     public File getBaseDir() {
         return dir;
+    }
+
+    @Override
+    public String toString() {
+        return displayName;
+    }
+
+    public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Class<K> keyType, Class<V> valueType) {
+        return cacheAccess.newCache(cacheFile, keyType, valueType);
+    }
+
+    public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Class<K> keyType, Serializer<V> valueSerializer) {
+        return cacheAccess.newCache(cacheFile, keyType, valueSerializer);
+    }
+
+    public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+        return cacheAccess.newCache(cacheFile, keySerializer, valueSerializer);
+    }
+
+    public <T> T useCache(String operationDisplayName, Factory<? extends T> action) {
+        return cacheAccess.useCache(operationDisplayName, action);
+    }
+
+    public void useCache(String operationDisplayName, Runnable action) {
+        cacheAccess.useCache(operationDisplayName, action);
+    }
+
+    public <T> T longRunningOperation(String operationDisplayName, Factory<? extends T> action) {
+        return cacheAccess.longRunningOperation(operationDisplayName, action);
+    }
+
+    public void longRunningOperation(String operationDisplayName, Runnable action) {
+        cacheAccess.longRunningOperation(operationDisplayName, action);
     }
 }

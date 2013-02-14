@@ -17,8 +17,11 @@
 package org.gradle.invocation;
 
 import groovy.lang.Closure;
+import org.gradle.BuildAdapter;
 import org.gradle.BuildListener;
 import org.gradle.StartParameter;
+import org.gradle.api.Action;
+import org.gradle.api.Project;
 import org.gradle.api.ProjectEvaluationListener;
 import org.gradle.api.internal.GradleDistributionLocator;
 import org.gradle.api.internal.GradleInternal;
@@ -27,6 +30,8 @@ import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.ServiceRegistryFactory;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.execution.TaskGraphExecuter;
+import org.gradle.listener.ActionBroadcast;
+import org.gradle.listener.ClosureBackedMethodInvocationDispatch;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.listener.ListenerManager;
 import org.gradle.util.GradleVersion;
@@ -47,6 +52,7 @@ public class DefaultGradle implements GradleInternal {
     private final GradleDistributionLocator distributionLocator;
     private final ListenerBroadcast<BuildListener> buildListenerBroadcast;
     private final ListenerBroadcast<ProjectEvaluationListener> projectEvaluationListenerBroadcast;
+    private ActionBroadcast<Project> rootProjectActions = new ActionBroadcast<Project>();
 
     public DefaultGradle(Gradle parent, StartParameter startParameter, ServiceRegistryFactory parentRegistry) {
         this.parent = parent;
@@ -59,6 +65,13 @@ public class DefaultGradle implements GradleInternal {
         distributionLocator = services.get(GradleDistributionLocator.class);
         buildListenerBroadcast = listenerManager.createAnonymousBroadcaster(BuildListener.class);
         projectEvaluationListenerBroadcast = listenerManager.createAnonymousBroadcaster(ProjectEvaluationListener.class);
+        buildListenerBroadcast.add(new BuildAdapter(){
+            @Override
+            public void projectsLoaded(Gradle gradle) {
+                rootProjectActions.execute(rootProject);
+                rootProjectActions = null;
+            }
+        });
     }
 
     @Override
@@ -87,11 +100,31 @@ public class DefaultGradle implements GradleInternal {
     }
 
     public ProjectInternal getRootProject() {
+        if (rootProject == null) {
+            throw new IllegalStateException("The root project is not yet available for " + this + ".");
+        }
         return rootProject;
     }
 
     public void setRootProject(ProjectInternal rootProject) {
         this.rootProject = rootProject;
+    }
+
+    public void rootProject(Action<? super Project> action) {
+        if (rootProjectActions != null) {
+            rootProjectActions.add(action);
+        } else {
+            assert rootProject != null;
+            action.execute(rootProject);
+        }
+    }
+
+    public void allprojects(final Action<? super Project> action) {
+        rootProject(new Action<Project>() {
+            public void execute(Project project) {
+                project.allprojects(action);
+            }
+        });
     }
 
     public ProjectInternal getDefaultProject() {
@@ -128,31 +161,31 @@ public class DefaultGradle implements GradleInternal {
     }
 
     public void beforeProject(Closure closure) {
-        projectEvaluationListenerBroadcast.add("beforeEvaluate", closure);
+        projectEvaluationListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("beforeEvaluate", closure));
     }
 
     public void afterProject(Closure closure) {
-        projectEvaluationListenerBroadcast.add("afterEvaluate", closure);
+        projectEvaluationListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("afterEvaluate", closure));
     }
 
     public void buildStarted(Closure closure) {
-        buildListenerBroadcast.add("buildStarted", closure);
+        buildListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("buildStarted", closure));
     }
 
     public void settingsEvaluated(Closure closure) {
-        buildListenerBroadcast.add("settingsEvaluated", closure);
+        buildListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("settingsEvaluated", closure));
     }
 
     public void projectsLoaded(Closure closure) {
-        buildListenerBroadcast.add("projectsLoaded", closure);
+        buildListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("projectsLoaded", closure));
     }
 
     public void projectsEvaluated(Closure closure) {
-        buildListenerBroadcast.add("projectsEvaluated", closure);
+        buildListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("projectsEvaluated", closure));
     }
 
     public void buildFinished(Closure closure) {
-        buildListenerBroadcast.add("buildFinished", closure);
+        buildListenerBroadcast.add(new ClosureBackedMethodInvocationDispatch("buildFinished", closure));
     }
 
     public void addListener(Object listener) {

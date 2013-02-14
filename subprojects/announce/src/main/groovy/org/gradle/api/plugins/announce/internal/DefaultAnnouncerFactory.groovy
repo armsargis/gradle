@@ -15,34 +15,65 @@
  */
 package org.gradle.api.plugins.announce.internal
 
-import org.gradle.api.plugins.announce.AnnouncePluginConvention
-import org.gradle.api.plugins.announce.Announcer
 import org.gradle.api.InvalidUserDataException
+import org.gradle.api.JavaVersion
+import org.gradle.api.internal.ProcessOperations
+import org.gradle.api.plugins.announce.AnnouncePluginExtension
+import org.gradle.api.plugins.announce.Announcer
+import org.gradle.internal.os.OperatingSystem
 
 /**
  * @author Hans Dockter
  */
 class DefaultAnnouncerFactory implements AnnouncerFactory {
-    private final AnnouncePluginConvention announcePluginConvention
+    private final AnnouncePluginExtension announcePluginConvention
+    private final IconProvider iconProvider
+    private final ProcessOperations processOperations
 
-    DefaultAnnouncerFactory(announcePluginConvention) {
+    DefaultAnnouncerFactory(AnnouncePluginExtension announcePluginConvention, ProcessOperations processOperations, IconProvider iconProvider) {
         this.announcePluginConvention = announcePluginConvention
+        this.iconProvider = iconProvider
+        this.processOperations = processOperations
     }
 
     Announcer createAnnouncer(String type) {
+        def announcer = createActualAnnouncer(type)
+        return announcer ? new IgnoreUnavailableAnnouncer(announcer) : new UnknownAnnouncer()
+    }
+
+    private Announcer createActualAnnouncer(String type) {
         switch (type) {
+            case "local":
+                if (OperatingSystem.current().windows) {
+                    return createActualAnnouncer("snarl")
+                } else if (OperatingSystem.current().macOsX) {
+                    return createActualAnnouncer("growl")
+                } else {
+                    return createActualAnnouncer("notify-send")
+                }
             case "twitter":
                 String username = announcePluginConvention.username
                 String password = announcePluginConvention.password
                 return new Twitter(username, password)
             case "notify-send":
-                return new NotifySend(announcePluginConvention.project)
+                return new NotifySend(processOperations, iconProvider)
             case "snarl":
-                return new Snarl()
+                return new Snarl(iconProvider)
             case "growl":
-                return new Growl(announcePluginConvention.project)
+                if (JavaVersion.current().java6Compatible) {
+                    try {
+                        return getClass().getClassLoader().loadClass("org.gradle.api.plugins.announce.internal.jdk6.AppleScriptBackedGrowlAnnouncer").newInstance(iconProvider)
+                    }
+                    catch (AnnouncerUnavailableException e) {
+                        // Ignore and fall back to growl notify
+                    }
+                    catch (ClassNotFoundException e) {
+                        // Ignore and fall back to growl notify
+                    }
+                }
+                return new GrowlNotifyBackedAnnouncer(processOperations, iconProvider)
             default:
-                return new UnknownAnnouncer()
+                return null
         }
     }
 }

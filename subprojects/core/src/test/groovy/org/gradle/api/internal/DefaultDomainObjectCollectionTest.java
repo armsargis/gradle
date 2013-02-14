@@ -33,7 +33,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-import static org.gradle.util.WrapUtil.*;
+import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
@@ -87,7 +87,7 @@ public class DefaultDomainObjectCollectionTest {
         container.add("b");
         container.add("c");
 
-        assertThat(toList(container.findAll(spec)), equalTo(toList((CharSequence) "a", "c")));
+        assertThat(toList(container.matching(spec)), equalTo(toList((CharSequence) "a", "c")));
     }
 
     @Test
@@ -100,7 +100,7 @@ public class DefaultDomainObjectCollectionTest {
 
         container.add("a");
 
-        assertTrue(container.findAll(spec).isEmpty());
+        assertTrue(container.matching(spec).isEmpty());
     }
 
     @Test
@@ -187,6 +187,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void filteredCollectionExecutesActionWhenMatchingObjectAdded() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         context.checking(new Expectations() {{
@@ -272,6 +273,7 @@ public class DefaultDomainObjectCollectionTest {
     
     @Test
     public void callsActionWhenObjectAdded() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         context.checking(new Expectations() {{
@@ -316,6 +318,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void callsRemoveActionWhenObjectRemoved() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
         final String original = "a";
 
@@ -330,6 +333,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void callsRemoveActionWhenObjectRemovedUsingIterator() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         container.whenObjectRemoved(action);
@@ -349,6 +353,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void allCallsActionForEachExistingObject() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         context.checking(new Expectations() {{
@@ -373,6 +378,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void allCallsActionForEachNewObject() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         context.checking(new Expectations() {{
@@ -403,6 +409,7 @@ public class DefaultDomainObjectCollectionTest {
 
     @Test
     public void allCallsActionForEachNewObjectAddedByTheAction() {
+        @SuppressWarnings("unchecked")
         final Action<CharSequence> action = context.mock(Action.class);
 
         context.checking(new Expectations() {{

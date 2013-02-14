@@ -20,6 +20,7 @@ import org.gradle.api.Project;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.plugins.ide.idea.IdeaPlugin;
 import org.gradle.plugins.ide.idea.model.*;
+import org.gradle.tooling.internal.gradle.DefaultGradleModuleVersion;
 import org.gradle.tooling.internal.idea.*;
 import org.gradle.tooling.internal.protocol.InternalIdeaProject;
 import org.gradle.tooling.internal.protocol.ProjectVersion3;
@@ -30,13 +31,11 @@ import org.gradle.tooling.model.idea.IdeaSourceDirectory;
 import java.io.File;
 import java.util.*;
 
-import static org.codehaus.groovy.runtime.InvokerHelper.asList;
-
 /**
  * @author: Szczepan Faber, created at: 7/23/11
  */
 public class IdeaModelBuilder implements BuildsModel {
-    public boolean canBuild(Class type) {
+    public boolean canBuild(Class<?> type) {
         return type == InternalIdeaProject.class;
     }
 
@@ -74,7 +73,7 @@ public class IdeaModelBuilder implements BuildsModel {
         for (IdeaModule module : projectModel.getModules()) {
             buildDependencies(modules, module);
         }
-        out.setChildren(new LinkedList(modules.values()));
+        out.setChildren(new LinkedList<DefaultIdeaModule>(modules.values()));
 
         return out;
     }
@@ -86,12 +85,16 @@ public class IdeaModelBuilder implements BuildsModel {
         for (Dependency dependency : resolved) {
             if (dependency instanceof SingleEntryModuleLibrary) {
                 SingleEntryModuleLibrary d = (SingleEntryModuleLibrary) dependency;
-                IdeaDependency defaultDependency = new DefaultIdeaSingleEntryLibraryDependency()
+                DefaultIdeaSingleEntryLibraryDependency defaultDependency = new DefaultIdeaSingleEntryLibraryDependency()
                         .setFile(d.getLibraryFile())
                         .setSource(d.getSourceFile())
                         .setJavadoc(d.getJavadocFile())
                         .setScope(new DefaultIdeaDependencyScope(d.getScope()))
                         .setExported(d.getExported());
+
+                if (d.getModuleVersion() != null) {
+                    defaultDependency.setGradleModuleVersion(new DefaultGradleModuleVersion(d.getModuleVersion()));
+                }
                 dependencies.add(defaultDependency);
             } else if (dependency instanceof ModuleDependency) {
                 ModuleDependency d = (ModuleDependency) dependency;
@@ -117,7 +120,7 @@ public class IdeaModelBuilder implements BuildsModel {
                 .setParent(ideaProject)
                 .setGradleProject(rootGradleProject.findByPath(ideaModule.getProject().getPath()))
                 .setModuleFileDir(ideaModule.getIml().getGenerateTo())
-                .setContentRoots(asList(contentRoot))
+                .setContentRoots(Collections.singletonList(contentRoot))
                 .setCompilerOutput(new DefaultIdeaCompilerOutput()
                     .setInheritOutputDirs(ideaModule.getInheritOutputDirs() != null ? ideaModule.getInheritOutputDirs() : false)
                     .setOutputDir(ideaModule.getOutputDir())

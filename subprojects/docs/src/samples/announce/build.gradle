@@ -1,6 +1,9 @@
 // START SNIPPET use-plugin
 apply plugin: 'announce'
 // END SNIPPET use-plugin
+// START SNIPPET use-build-announcements-plugin
+apply plugin: 'build-announcements'
+// END SNIPPET use-build-announcements-plugin
 
 //START SNIPPET announce-plugin-conf
 announce {  
@@ -12,12 +15,12 @@ announce {
 
 //START SNIPPET announce-usage
 task helloWorld << {  
-    ant.echo(message: "hello") 
+    println "Hello, world!"
 }  
 
 helloWorld.doLast {  
-    announce("Build complete", "notify-send")
-    announce("Build complete", "twitter")
+    announce.announce("helloWorld completed!", "twitter")
+    announce.announce("helloWorld completed!", "local")
 }
 //END SNIPPET announce-usage
 

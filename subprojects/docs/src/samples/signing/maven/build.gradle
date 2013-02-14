@@ -19,20 +19,14 @@ signing {
 }
 // END SNIPPET sign-archives
 
-// START SNIPPET published-configuration
-configurations {
-    published.extendsFrom archives, signatures
-}
-// END SNIPPET published-configuration
-
 // START SNIPPET sign-pom
-uploadPublished {
+uploadArchives {
     repositories {
         mavenDeployer {
 // END SNIPPET sign-pom
             repository(url: uri("${buildDir}/repo"))
 // START SNIPPET sign-pom
-            beforeDeployment { MavenDeployment deployment -> signPom(deployment) }
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
         }
     }
 }

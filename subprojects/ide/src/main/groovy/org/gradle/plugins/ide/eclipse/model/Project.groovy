@@ -15,7 +15,7 @@
  */
 package org.gradle.plugins.ide.eclipse.model
 
-import org.gradle.api.internal.XmlTransformer
+import org.gradle.api.internal.xml.XmlTransformer
 import org.gradle.plugins.ide.internal.generator.XmlPersistableConfigurationObject
 
 /**
@@ -55,24 +55,6 @@ class Project extends XmlPersistableConfigurationObject {
      * The linkedResources to be added to this Eclipse project.
      */
     Set<Link> linkedResources = new LinkedHashSet<Link>()
-
-    /**
-     * The links to be added to this Eclipse project.
-     * <p>
-     * @deprecated Please use linkedResources
-     */
-    @Deprecated
-    Set<Link> getLinks() {
-        this.linkedResources
-    }
-
-    /**
-     * @deprecated Please use linkedResources
-     */
-    @Deprecated
-    void setLinks(Set<Link> links) {
-        this.linkedResources(links)
-    }
 
     def Project(XmlTransformer xmlTransformer) {
         super(xmlTransformer)

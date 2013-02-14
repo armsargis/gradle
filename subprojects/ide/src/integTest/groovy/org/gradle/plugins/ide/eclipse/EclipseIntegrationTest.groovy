@@ -16,16 +16,16 @@
 package org.gradle.plugins.ide.eclipse
 
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.util.TextUtil
 import org.junit.Rule
 import org.junit.Test
 import spock.lang.Issue
-import org.gradle.util.TextUtil
 
 class EclipseIntegrationTest extends AbstractEclipseIntegrationTest {
     private static String nonAscii = "\\u7777\\u8888\\u9999"
 
     @Rule
-    public final TestResources testResources = new TestResources()
+    public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
     void canCreateAndDeleteMetaData() {
@@ -83,16 +83,15 @@ sourceSets {
 
     @Test
     void canHandleCircularModuleDependencies() {
-        def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2", "myArtifact1")
+        def artifact1 = mavenRepo.module("myGroup", "myArtifact1", "1.0").dependsOn("myGroup", "myArtifact2", "1.0").publish().artifactFile
+        def artifact2 = mavenRepo.module("myGroup", "myArtifact2", "1.0").dependsOn("myGroup", "myArtifact1", "1.0").publish().artifactFile
 
         runEclipseTask """
 apply plugin: "java"
 apply plugin: "eclipse"
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -191,16 +190,15 @@ tasks.eclipse << {
 
     @Test
     void respectsPerConfigurationExcludes() {
-        def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        def artifact1 = mavenRepo.module("myGroup", "myArtifact1", "1.0").dependsOn("myGroup", "myArtifact2", "1.0").publish().artifactFile
+        mavenRepo.module("myGroup", "myArtifact2", "1.0").publish()
 
         runEclipseTask """
 apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${mavenRepo.uri}" }
 }
 
 configurations {
@@ -217,16 +215,15 @@ dependencies {
 
     @Test
     void respectsPerDependencyExcludes() {
-        def repoDir = file("repo")
-        def artifact1 = publishArtifact(repoDir, "myGroup", "myArtifact1", "myArtifact2")
-        def artifact2 = publishArtifact(repoDir, "myGroup", "myArtifact2")
+        def artifact1 = mavenRepo.module("myGroup", "myArtifact1", "1.0").dependsOn("myGroup", "myArtifact2", "1.0").publish().artifactFile
+        mavenRepo.module("myGroup", "myArtifact2", "1.0").publish()
 
         runEclipseTask """
 apply plugin: 'java'
 apply plugin: 'eclipse'
 
 repositories {
-    mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${mavenRepo.uri}" }
 }
 
 dependencies {
@@ -329,7 +326,7 @@ eclipse {
     @Test
     @Issue("GRADLE-1157")
     void canHandleDependencyWithoutSourceJarInFlatDirRepo() {
-        def repoDir = testDir.createDir("repo")
+        def repoDir = testDirectory.createDir("repo")
         repoDir.createFile("lib-1.0.jar")
 
         runEclipseTask """
@@ -349,15 +346,14 @@ dependencies {
     @Test
     @Issue("GRADLE-1706") // doesn't prove that the issue is fixed because the test also passes with 1.0-milestone-4
     void canHandleDependencyWithoutSourceJarInMavenRepo() {
-        def repoDir = testDir.createDir("repo")
-        publishArtifact(repoDir, "some", "lib")
+        mavenRepo.module("some", "lib", "1.0").publish()
 
         runEclipseTask """
 apply plugin: "java"
 apply plugin: "eclipse"
 
 repositories {
-	mavenRepo urls: "${repoDir.toURI()}"
+    maven { url "${mavenRepo}" }
 }
 
 dependencies {

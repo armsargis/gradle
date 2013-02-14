@@ -18,21 +18,25 @@ package org.gradle.initialization;
 
 import org.gradle.*;
 import org.gradle.api.internal.ExceptionAnalyser;
+import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.project.GlobalServicesRegistry;
-import org.gradle.api.internal.project.ServiceRegistry;
 import org.gradle.api.internal.project.TopLevelBuildServiceRegistry;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.logging.StandardOutputListener;
-import org.gradle.cli.CommandLineConverter;
 import org.gradle.cache.CacheRepository;
+import org.gradle.cli.CommandLineConverter;
 import org.gradle.configuration.BuildConfigurer;
+import org.gradle.execution.BuildExecuter;
+import org.gradle.initialization.layout.BuildLayoutFactory;
+import org.gradle.internal.reflect.Instantiator;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.invocation.DefaultGradle;
 import org.gradle.listener.ListenerManager;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.ProgressLoggerFactory;
 import org.gradle.logging.StyledTextOutputFactory;
-import org.gradle.profile.ProfileListener;
-import org.gradle.util.WrapUtil;
+import org.gradle.profile.ProfileEventAdapter;
+import org.gradle.profile.ReportGeneratingProfileListener;
 
 import java.util.Arrays;
 
@@ -96,13 +100,12 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
     }
 
     private DefaultGradleLauncher doNewInstance(StartParameter startParameter, BuildRequestMetaData requestMetaData) {
-        TopLevelBuildServiceRegistry serviceRegistry = new TopLevelBuildServiceRegistry(sharedServices, startParameter);
+        final TopLevelBuildServiceRegistry serviceRegistry = new TopLevelBuildServiceRegistry(sharedServices, startParameter);
         serviceRegistry.add(BuildRequestMetaData.class, requestMetaData);
         serviceRegistry.add(BuildClientMetaData.class, requestMetaData.getClient());
         ListenerManager listenerManager = serviceRegistry.get(ListenerManager.class);
         LoggingManagerInternal loggingManager = serviceRegistry.newInstance(LoggingManagerInternal.class);
         loggingManager.setLevel(startParameter.getLogLevel());
-        loggingManager.colorStdOutAndStdErr(startParameter.isColorOutput());
 
         //this hooks up the ListenerManager and LoggingConfigurer so you can call Gradle.addListener() with a StandardOutputListener.
         loggingManager.addStandardOutputListener(listenerManager.getBroadcaster(StandardOutputListener.class));
@@ -115,21 +118,18 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
         listenerManager.addListener(tracker);
         listenerManager.addListener(new BuildCleanupListener(serviceRegistry));
 
+        listenerManager.addListener(serviceRegistry.get(ProfileEventAdapter.class));
         if (startParameter.isProfile()) {
-            listenerManager.addListener(new ProfileListener(requestMetaData.getBuildTimeClock().getStartTime()));
+            listenerManager.addListener(new ReportGeneratingProfileListener());
         }
 
-        DefaultGradle gradle = new DefaultGradle(
-                tracker.getCurrentBuild(),
-                startParameter, serviceRegistry);
+        GradleInternal gradle = serviceRegistry.get(Instantiator.class).newInstance(DefaultGradle.class, tracker.getCurrentBuild(), startParameter, serviceRegistry);
         return new DefaultGradleLauncher(
                 gradle,
                 serviceRegistry.get(InitScriptHandler.class),
                 new SettingsHandler(
-                        new EmbeddedScriptSettingsFinder(
-                                new DefaultSettingsFinder(WrapUtil.<ISettingsFileSearchStrategy>toList(
-                                        new MasterDirSettingsFinderStrategy(),
-                                        new ParentDirSettingsFinderStrategy()))),
+                        new DefaultSettingsFinder(
+                                new BuildLayoutFactory()),
                         serviceRegistry.get(SettingsProcessor.class),
                         new BuildSourceBuilder(
                                 this,
@@ -139,7 +139,10 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
                 serviceRegistry.get(BuildConfigurer.class),
                 gradle.getBuildListenerBroadcaster(),
                 serviceRegistry.get(ExceptionAnalyser.class),
-                loggingManager);
+                loggingManager,
+                listenerManager.getBroadcaster(ModelConfigurationListener.class),
+                listenerManager.getBroadcaster(TasksCompletionListener.class),
+                gradle.getServices().get(BuildExecuter.class));
     }
 
     public void setCommandLineConverter(
@@ -159,4 +162,5 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
             services.close();
         }
     }
+
 }

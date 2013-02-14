@@ -15,12 +15,15 @@
  */
 package org.gradle.cache.internal;
 
+import java.io.Closeable;
 import java.io.File;
-import java.util.concurrent.Callable;
 
-public interface FileLock {
+public interface FileLock extends Closeable, FileAccess {
     /**
-     * Returns true if the most recent {@link #writeToFile(Runnable)} succeeded (ie a process did not crash while updating the target file)
+     * Returns true if the most recent mutation method ({@link #updateFile(Runnable)} or {@link #writeFile(Runnable)} attempted by any process succeeded
+     * (ie a process did not crash while updating the target file).
+     *
+     * Returns false if no mutation method has been called for the target file.
      */
     boolean getUnlockedCleanly();
 
@@ -30,24 +33,12 @@ public interface FileLock {
     boolean isLockFile(File file);
 
     /**
-     * Runs the given action under a shared or exclusive lock.
-     *
-     * <p>If an exclusive or shared lock is already held, the lock level is not changed and the action is simply executed. If no lock is already held, a shared lock is acquired,
-     * the action executed, and the lock released.
-     */
-    <T> T readFromFile(Callable<T> action) throws LockTimeoutException;
-
-    /**
-     * Runs the given action under an exclusive lock. If the given action fails, the lock is marked as uncleanly unlocked.
-     *
-     * <p>If an exclusive lock is already held, the lock level is not changed and the action is simply executed. If a shared lock is already held, the lock is escalated to an
-     * exclusive lock, and reverted back to a shared lock when the action completes. If no lock is already held, an exclusive lock is acquired, the action executed, and the lock
-     * released.
-     */
-    void writeToFile(Runnable action) throws LockTimeoutException;
-
-    /**
      * Closes this lock, releasing the lock and any resources associated with it.
      */
     void close();
+
+    /**
+     * The actual mode of the lock. May be different to what was requested.
+     */
+    FileLockManager.LockMode getMode();
 }

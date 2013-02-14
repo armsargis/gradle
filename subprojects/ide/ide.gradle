@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
     compile project(':scala')
     compile project(':core')
     compile project(':plugins')
     compile project(':ear')
     compile project(':toolingApi')
-    compile libraries.commons_io
-    compile libraries.slf4j_api, libraries.jaxen
-    compile 'dom4j:dom4j:1.6.1@jar'
+    compile libraries.slf4j_api
+    compile libraries.inject
+
+    testCompile libraries.xmlunit
+    testCompile project(':coreImpl')
 }
 
 useTestFixtures()

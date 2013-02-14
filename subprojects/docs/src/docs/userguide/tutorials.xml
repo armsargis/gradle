@@ -49,6 +49,14 @@
             </varlistentry>
             <varlistentry>
                 <term>
+                    <xref linkend="artifact_dependencies_tutorial"/>
+                </term>
+                <listitem>
+                    <para>Shows how to start using Gradle's dependency management.</para>
+                </listitem>
+            </varlistentry>
+            <varlistentry>
+                <term>
                     <xref linkend="tutorial_groovy_projects"/>
                 </term>
                 <listitem>
@@ -67,6 +75,6 @@
     </section>
     <section condition="website">
         <title>Where to next?</title>
-        <para>There are more tutorials and plenty of reference material in the <ulink url="website:documentation.html">user guide</ulink>.</para>
+        <para>There are more tutorials and plenty of reference material in the <ulink url="website:documentation">user guide</ulink>.</para>
     </section>
 </chapter>

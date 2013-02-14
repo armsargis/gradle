@@ -19,6 +19,8 @@ import org.gradle.CacheUsage;
 import org.gradle.api.Action;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.*;
+import org.gradle.messaging.serialize.DefaultSerializer;
+import org.gradle.messaging.serialize.Serializer;
 import org.gradle.util.GradleVersion;
 
 import java.io.File;
@@ -26,17 +28,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.gradle.cache.internal.CacheFactory.CrossVersionMode;
 import static org.gradle.cache.internal.FileLockManager.LockMode;
 
 public class DefaultCacheRepository implements CacheRepository {
     private final GradleVersion version = GradleVersion.current();
     private final File globalCacheDir;
     private final CacheUsage cacheUsage;
-    private final String projectCacheDir;
+    private final File projectCacheDir;
     private final CacheFactory factory;
 
-    public DefaultCacheRepository(File userHomeDir, String projectCacheDir, CacheUsage cacheUsage, CacheFactory factory) {
+    public DefaultCacheRepository(File userHomeDir, File projectCacheDir, CacheUsage cacheUsage, CacheFactory factory) {
         this.projectCacheDir = projectCacheDir;
         this.factory = factory;
         this.globalCacheDir = new File(userHomeDir, "caches");
@@ -64,6 +65,7 @@ public class DefaultCacheRepository implements CacheRepository {
         private Map<String, ?> properties = Collections.emptyMap();
         private Object target;
         private VersionStrategy versionStrategy = VersionStrategy.CachePerVersion;
+        private CacheValidator validator;
 
         protected AbstractCacheBuilder(String key) {
             this.key = key;
@@ -84,6 +86,11 @@ public class DefaultCacheRepository implements CacheRepository {
             return this;
         }
 
+        public CacheBuilder<T> withValidator(CacheValidator validator) {
+            this.validator = validator;
+            return this;
+        }
+
         public T open() {
             File cacheBaseDir;
             Map<String, Object> properties = new HashMap<String, Object>(this.properties);
@@ -94,7 +101,7 @@ public class DefaultCacheRepository implements CacheRepository {
                 File rootProjectDir = gradle.getRootProject().getProjectDir();
                 cacheBaseDir = maybeProjectCacheDir(rootProjectDir);
             } else if (target instanceof File) {
-                cacheBaseDir = maybeProjectCacheDir((File) target);
+                cacheBaseDir = new File((File) target, ".gradle");
             } else {
                 throw new IllegalArgumentException(String.format("Cannot create cache for unrecognised domain object %s.", target));
             }
@@ -111,25 +118,23 @@ public class DefaultCacheRepository implements CacheRepository {
                     properties.put("gradle.version", version.getVersion());
                     break;
             }
-            return doOpen(new File(cacheBaseDir, key), properties);
+            return doOpen(new File(cacheBaseDir, key), properties, validator);
         }
 
-        protected abstract T doOpen(File cacheDir, Map<String, ?> properties);
+        protected abstract T doOpen(File cacheDir, Map<String, ?> properties, CacheValidator validator);
 
         private File maybeProjectCacheDir(File potentialParentDir) {
-            if (new File(projectCacheDir).isAbsolute()) {
-                return new File(projectCacheDir);
+            if (projectCacheDir != null) {
+                return projectCacheDir;
             }
-            return new File(potentialParentDir, projectCacheDir);
-        }
-
-        protected CrossVersionMode getCrossVersionMode() {
-            return versionStrategy == VersionStrategy.CachePerVersion ? CrossVersionMode.VersionSpecific : CrossVersionMode.CrossVersion;
+            return new File(potentialParentDir, ".gradle");
         }
     }
 
     private class PersistentCacheBuilder extends AbstractCacheBuilder<PersistentCache> implements DirectoryCacheBuilder {
         Action<? super PersistentCache> initializer;
+        LockMode lockMode = LockMode.Shared;
+        String displayName;
 
         protected PersistentCacheBuilder(String key) {
             super(key);
@@ -153,14 +158,30 @@ public class DefaultCacheRepository implements CacheRepository {
             return this;
         }
 
+        @Override
+        public DirectoryCacheBuilder withValidator(CacheValidator validator) {
+            super.withValidator(validator);
+            return this;
+        }
+
         public DirectoryCacheBuilder withInitializer(Action<? super PersistentCache> initializer) {
             this.initializer = initializer;
             return this;
         }
 
+        public DirectoryCacheBuilder withDisplayName(String displayName) {
+            this.displayName = displayName;
+            return this;
+        }
+
+        public DirectoryCacheBuilder withLockMode(LockMode lockMode) {
+            this.lockMode = lockMode;
+            return this;
+        }
+
         @Override
-        protected PersistentCache doOpen(File cacheDir, Map<String, ?> properties) {
-            return factory.open(cacheDir, cacheUsage, properties, LockMode.Shared, getCrossVersionMode(), initializer);
+        protected PersistentCache doOpen(File cacheDir, Map<String, ?> properties, CacheValidator validator) {
+            return factory.open(cacheDir, displayName, cacheUsage, validator, properties, lockMode, initializer);
         }
     }
 
@@ -170,11 +191,11 @@ public class DefaultCacheRepository implements CacheRepository {
         }
 
         @Override
-        protected PersistentCache doOpen(File cacheDir, Map<String, ?> properties) {
+        protected PersistentCache doOpen(File cacheDir, Map<String, ?> properties, CacheValidator validator) {
             if (!properties.isEmpty()) {
                 throw new UnsupportedOperationException("Properties are not supported for stores.");
             }
-            return factory.openStore(cacheDir, LockMode.Shared, getCrossVersionMode(), initializer);
+            return factory.openStore(cacheDir, displayName, lockMode, initializer);
         }
     }
 
@@ -215,8 +236,8 @@ public class DefaultCacheRepository implements CacheRepository {
         }
 
         @Override
-        protected PersistentStateCache<E> doOpen(File cacheDir, Map<String, ?> properties) {
-            return factory.openStateCache(cacheDir, cacheUsage, properties, LockMode.Exclusive, getCrossVersionMode(), serializer);
+        protected PersistentStateCache<E> doOpen(File cacheDir, Map<String, ?> properties, CacheValidator validator) {
+            return factory.openStateCache(cacheDir, cacheUsage, validator, properties, LockMode.Exclusive, serializer);
         }
     }
 
@@ -226,8 +247,8 @@ public class DefaultCacheRepository implements CacheRepository {
         }
 
         @Override
-        protected PersistentIndexedCache<K, V> doOpen(File cacheDir, Map<String, ?> properties) {
-            return factory.openIndexedCache(cacheDir, cacheUsage, properties, LockMode.Exclusive, getCrossVersionMode(), serializer);
+        protected PersistentIndexedCache<K, V> doOpen(File cacheDir, Map<String, ?> properties, CacheValidator validator) {
+            return factory.openIndexedCache(cacheDir, cacheUsage, validator, properties, LockMode.Exclusive, serializer);
         }
     }
 }

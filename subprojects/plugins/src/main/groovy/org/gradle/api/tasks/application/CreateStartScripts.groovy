@@ -29,7 +29,7 @@ import org.gradle.util.GUtil
  *
  * @author Rene Groeschke
  */
-class CreateStartScripts extends ConventionTask {
+public class CreateStartScripts extends ConventionTask {
 
     /**
      * The directory to write the scripts into.
@@ -95,8 +95,6 @@ class CreateStartScripts extends ConventionTask {
 
     @TaskAction
     void generate() {
-        getOutputDir().mkdirs()
-
         def generator = new StartScriptGenerator()
         generator.applicationName = getApplicationName()
         generator.mainClassName = getMainClassName()

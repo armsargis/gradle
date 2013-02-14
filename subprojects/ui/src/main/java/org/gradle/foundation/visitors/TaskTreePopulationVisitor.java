@@ -19,12 +19,9 @@ import org.gradle.foundation.ProjectView;
 import org.gradle.foundation.TaskView;
 import org.gradle.gradleplugin.foundation.filters.AllowAllProjectAndTaskFilter;
 import org.gradle.gradleplugin.foundation.filters.ProjectAndTaskFilter;
+import org.gradle.util.GUtil;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * This visits each project and task in a hierarchical manner. This visitor is specifically meant to walk the projects first and tasks second for the purpose of populating a tree where the
@@ -109,7 +106,7 @@ public class TaskTreePopulationVisitor {
         List<P> userProjectObjects = visitProjects(visitor, filter, projects, rootProjectObject, new AlphabeticalProjectNameComparator(), new AlphabeticalTaskNameComparator());
 
         //notify the visitation of the root projects. There are no tasks for this one, but there are projects.
-        visitor.completedVisitingProject(rootProjectObject, userProjectObjects, Collections.EMPTY_LIST);
+        visitor.completedVisitingProject(rootProjectObject, userProjectObjects, Collections.<T>emptyList());
     }
 
     private static <P, T> List<P> visitProjects(Visitor<P, T> visitor, ProjectAndTaskFilter filter,
@@ -173,7 +170,7 @@ public class TaskTreePopulationVisitor {
      */
     public static class AlphabeticalProjectNameComparator implements Comparator<ProjectView> {
         public int compare(ProjectView o1, ProjectView o2) {
-            return o1.getName().compareToIgnoreCase(o2.getName());
+            return GUtil.caseInsensitive().compare(o1.getName(), o2.getName());
         }
     }
 
@@ -182,7 +179,7 @@ public class TaskTreePopulationVisitor {
      */
     public static class AlphabeticalTaskNameComparator implements Comparator<TaskView> {
         public int compare(TaskView o1, TaskView o2) {
-            return o1.getName().compareToIgnoreCase(o2.getName());
+            return GUtil.caseInsensitive().compare(o1.getName(), o2.getName());
         }
     }
 }

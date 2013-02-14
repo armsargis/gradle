@@ -1,0 +1,173 @@
+apply from: 'src/generator.groovy'
+
+configurations {
+    junit
+    plugin
+}
+
+dependencies {
+    junit 'junit:junit:4.11'
+    groovy libraries.groovy
+    testFixturesCompile project(':internalIntegTesting')
+    plugin gradleApi()
+}
+
+useTestFixtures()
+
+task small(type: ProjectGeneratorTask, description: 'Generates a small project') {
+}
+
+task largeSrc(type: ProjectGeneratorTask, description: 'Generates a single project with lots of source files') {
+    sourceFiles = 50000
+    linesOfCodePerSourceFile = 20
+//    subProjectTemplates << 'plain-ant-compile'
+}
+
+task multi(type: ProjectGeneratorTask, description: 'Generates a multi-project build') {
+    projects = 25
+    sourceFiles = 100
+}
+
+task mixedSize(type: ProjectGeneratorTask) {
+    projects = 400
+    sourceFiles = 100
+    projects[1].sourceFiles = 20000
+}
+
+task withJUnit(type: ProjectGeneratorTask) {
+    projects = 1
+    sourceFiles = 100
+    subProjectTemplates << 'with-junit'
+}
+
+task withTestNG(type: ProjectGeneratorTask) {
+    projects = 1
+    sourceFiles = 100
+    subProjectTemplates << 'with-testng'
+}
+
+task withVerboseTestNG(type: ProjectGeneratorTask) {
+    projects = 1
+    sourceFiles = 10
+    subProjectTemplates << 'with-verbose-testng'
+}
+
+task withVerboseJUnit(type: ProjectGeneratorTask) {
+    projects = 1
+    sourceFiles = 10
+    subProjectTemplates << 'with-verbose-junit'
+}
+
+task multiGroovy(type: ProjectGeneratorTask, description: 'Generates a multi-project Groovy build') {
+    projects = 25
+    groovyProject = true
+}
+
+task multiScala(type: ProjectGeneratorTask, description: 'Generates a multi-project Scala build') {
+    projects = 25
+    scalaProject = true
+}
+
+task multiGroovyScala(type: ProjectGeneratorTask, description: 'Generates a multi-project Groovy & Scala build') {
+    projects = 25
+    groovyProject = true
+    scalaProject = true
+}
+
+task largeMulti(type: ProjectGeneratorTask, description: 'Generates a large multi-project build') {
+    projects = 800
+    sourceFiles = 100
+}
+
+task lotDependencies(type: ProjectGeneratorTask, description: 'Generates a small multi-project build with a large Dependency Graph') {
+    projects = 5
+    sourceFiles = 100
+
+    dependencyGraph {
+        size = 200
+        depth = 4
+        useSnapshotVersions = true //default is false
+    }
+}
+
+task manyProjects(type: ProjectGeneratorTask) {
+    projects = 500
+    sourceFiles = 0
+}
+
+task singleProjectNoBuildScript(type: ProjectGeneratorTask) {
+    projects = 1
+    sourceFiles = 0
+    rootProjectTemplates = []
+    subProjectTemplates = []
+}
+
+task manyProjectNoBuildScript(type: ProjectGeneratorTask) {
+    projects = 500
+    sourceFiles = 0
+    rootProjectTemplates = []
+    subProjectTemplates = []
+}
+
+task manyProjectMinimalBuildScript(type: ProjectGeneratorTask) {
+    projects = 500
+    sourceFiles = 0
+    rootProjectTemplates = ['minimal']
+    subProjectTemplates = ['minimal']
+}
+
+task manyProjectConfigInject(type: ProjectGeneratorTask) {
+    projects = 500
+    sourceFiles = 0
+    rootProjectTemplates = ['config-inject']
+    subProjectTemplates = []
+}
+
+task compilePlugin(type: JavaCompile) {
+    source 'src/configPlugin'
+    destinationDir file("$buildDir/configPlugin")
+    classpath = configurations.plugin
+}
+
+task manyProjectJavaConfig(type: ProjectGeneratorTask, dependsOn: compilePlugin) {
+    projects = 500
+    sourceFiles = 0
+    rootProjectTemplates = ['java-config']
+    subProjectTemplates = []
+}
+
+def generators = tasks.withType(ProjectGeneratorTask)
+generators.all {
+    group = 'Project setup'
+    testDependencies = configurations.junit
+}
+task all(dependsOn: generators)
+
+task prepareSamples(dependsOn: [small, multi, lotDependencies, withJUnit, withTestNG, withVerboseTestNG, withVerboseJUnit])
+
+integTestTasks.all {
+    if (buildTypes.isActive('performanceTest') || buildTypes.isActive('localPerformanceTest')) {
+        dependsOn prepareSamples
+    } else {
+        gradle.startParameter.excludedTaskNames << it.path
+    }
+    maxParallelForks = 1
+}
+
+tasks.integTest.testLogging {
+    showStandardStreams = true
+    lifecycle {
+        exceptionFormat 'full'
+    }
+}
+
+eclipse {
+    classpath {
+        file.whenMerged { classpath ->
+            //**TODO
+            classpath.entries.removeAll {it.path.contains('src/test/groovy')}
+            classpath.entries.removeAll {it.path.contains('src/testFixtures/groovy')}
+            classpath.entries.removeAll {it.path.contains('src/integTest/groovy')}
+        }
+    }
+}

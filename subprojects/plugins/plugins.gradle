@@ -14,39 +14,51 @@
  * limitations under the License.
  */
 
+apply from: "$rootDir/gradle/providedConfiguration.gradle"
+
 configurations {
     testFixtures
-    wrapper
+}
+
+if (!javaVersion.java6Compatible) {
+    sourceSets.main.groovy.exclude '**/jdk6/**'
 }
 
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
-    compile project(':core'), project(':wrapper')
+    compile project(':core')
+    compile project(':coreImpl')
+    compile project(':wrapper')
+    compile project(':reporting')
 
-    compile libraries.slf4j_api,
-            libraries.commons_lang,
-            libraries.asm_all,
-            libraries.junit,
-            libraries.ant,
-            'org.testng:testng:5.14.10'
+    compile libraries.ant
+    compile libraries.asm
+    compile libraries.commons_io
+    compile libraries.commons_lang
+    compile libraries.junit
+    compile libraries.slf4j_api
+    compile 'org.testng:testng:6.3.1'
 
-    wrapper project(':wrapper')
-    testCompile libraries.xmlunit, 'net.sourceforge.nekohtml:nekohtml:1.9.14'
+    provided files(jvm.toolsJar) // for SunJavaCompiler
+
+    runtime libraries.commons_cli
+
+    testCompile libraries.jsoup
 }
 
+evaluationDependsOn(":wrapper")
 task wrapperJar(type: Copy) {
-    from configurations.wrapper
-    into "$generatedResourcesDir"
-    rename 'gradle-wrapper-(.+)\\.jar', 'gradle-wrapper.jar'
+    from project(":wrapper").executableJar.outputs.files
+    into generatedResourcesDir
 }
-sourceSets.main.output.dir generatedResourcesDir, buildBy: wrapperJar
+sourceSets.main.output.dir generatedResourcesDir, builtBy: wrapperJar
 
 test {
     exclude 'org/gradle/api/internal/tasks/testing/junit/ATestClass*.*'
     exclude 'org/gradle/api/internal/tasks/testing/junit/ABroken*TestClass*.*'
-    jvmArgs '-Xms128m', '-Xmx256m', '-XX:+HeapDumpOnOutOfMemoryError'
 }
 
 useTestFixtures()
 useTestFixtures(sourceSet: "testFixtures")
+useTestFixtures(project: ":coreImpl")

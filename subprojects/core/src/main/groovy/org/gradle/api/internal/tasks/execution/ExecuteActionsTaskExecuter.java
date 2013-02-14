@@ -28,6 +28,9 @@ import org.gradle.api.tasks.StopActionException;
 import org.gradle.api.tasks.StopExecutionException;
 import org.gradle.api.tasks.TaskExecutionException;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A {@link org.gradle.api.internal.tasks.TaskExecuter} which executes the actions of a task.
  */
@@ -41,22 +44,20 @@ public class ExecuteActionsTaskExecuter implements TaskExecuter {
 
     public void execute(TaskInternal task, TaskStateInternal state) {
         listener.beforeActions(task);
-        ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(task.getClass().getClassLoader());
         state.setExecuting(true);
         try {
             GradleException failure = executeActions(task, state);
             state.executed(failure);
         } finally {
             state.setExecuting(false);
-            Thread.currentThread().setContextClassLoader(originalClassLoader);
             listener.afterActions(task);
         }
     }
 
     private GradleException executeActions(TaskInternal task, TaskStateInternal state) {
         logger.debug("Executing actions for {}.", task);
-        for (Action<? super Task> action : task.getActions()) {
+        final List<Action<? super Task>> actions = new ArrayList<Action<? super Task>>(task.getActions());
+        for (Action<? super Task> action : actions) {
             state.setDidWork(true);
             task.getStandardOutputCapture().start();
             try {

@@ -21,30 +21,35 @@ import org.gradle.api.execution.TaskActionListener;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.TaskStateInternal;
-import org.gradle.logging.StandardOutputCapture;
 import org.gradle.api.tasks.StopActionException;
 import org.gradle.api.tasks.StopExecutionException;
 import org.gradle.api.tasks.TaskExecutionException;
 import org.gradle.groovy.scripts.ScriptSource;
+import org.gradle.logging.StandardOutputCapture;
 import org.gradle.util.JUnit4GroovyMockery;
 import org.jmock.Expectations;
 import org.jmock.Sequence;
+import org.jmock.api.Invocation;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
+import org.jmock.lib.action.CustomAction;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import static java.util.Collections.emptyList;
 import static org.gradle.util.Matchers.*;
-import static org.gradle.util.WrapUtil.*;
+import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertThat;
 
 @RunWith(JMock.class)
 public class ExecuteActionsTaskExecuterTest {
     private final JUnit4Mockery context = new JUnit4GroovyMockery();
     private final TaskInternal task = context.mock(TaskInternal.class, "<task>");
+    @SuppressWarnings("unchecked")
     private final Action<Task> action1 = context.mock(Action.class, "action1");
+    @SuppressWarnings("unchecked")
     private final Action<Task> action2 = context.mock(Action.class, "action2");
     private final TaskStateInternal state = context.mock(TaskStateInternal.class);
     private final ScriptSource scriptSource = context.mock(ScriptSource.class);
@@ -55,7 +60,7 @@ public class ExecuteActionsTaskExecuterTest {
 
     @Before
     public void setUp() {
-        context.checking(new Expectations(){{
+        context.checking(new Expectations() {{
             ProjectInternal project = context.mock(ProjectInternal.class);
 
             allowing(task).getProject();
@@ -75,7 +80,7 @@ public class ExecuteActionsTaskExecuterTest {
     public void doesNothingWhenTaskHasNoActions() {
         context.checking(new Expectations() {{
             allowing(task).getActions();
-            will(returnValue(toList()));
+            will(returnValue(emptyList()));
 
             one(listener).beforeActions(task);
             inSequence(sequence);
@@ -134,7 +139,7 @@ public class ExecuteActionsTaskExecuterTest {
 
             one(state).executed(null);
             inSequence(sequence);
-            
+
             one(state).setExecuting(false);
             inSequence(sequence);
 
@@ -144,6 +149,50 @@ public class ExecuteActionsTaskExecuterTest {
 
         executer.execute(task, state);
     }
+
+    @Test
+    public void executeDoesOperateOnNewActionListInstance() {
+        context.checking(new Expectations() {
+            {
+                allowing(task).getActions();
+                will(returnValue(toList(action1)));
+
+                one(listener).beforeActions(task);
+                inSequence(sequence);
+
+                one(state).setExecuting(true);
+                inSequence(sequence);
+
+                one(state).setDidWork(true);
+                inSequence(sequence);
+
+                one(standardOutputCapture).start();
+                inSequence(sequence);
+
+                one(action1).execute(task);
+                will(new CustomAction("Add action to actions list") {
+                    public Object invoke(Invocation invocation) throws Throwable {
+                        task.getActions().add(action2);
+                        return null;
+                    }
+                });
+
+                inSequence(sequence);
+
+                one(standardOutputCapture).stop();
+                one(state).executed(null);
+                inSequence(sequence);
+
+                one(state).setExecuting(false);
+                inSequence(sequence);
+
+                one(listener).afterActions(task);
+                inSequence(sequence);
+            }
+        });
+        executer.execute(task, state);
+    }
+
 
     @Test
     public void stopsAtFirstActionWhichThrowsException() {

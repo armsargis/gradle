@@ -19,8 +19,6 @@ import groovy.lang.Closure;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.SourceDirectorySet;
 
-import java.io.File;
-
 /**
  * A {@code SourceSet} represents a logical group of Java source and resources.
  * <p>
@@ -85,44 +83,9 @@ public interface SourceSet {
      */
     void setRuntimeClasspath(FileCollection classpath);
 
-    /**
-     * DEPRECATED: Please use #output.classesDir instead.
-     * We needed to deprecate it to keep the DSL consistent.
-     * <p>
-     * Returns the directory to assemble the compiled classes into.
-     *
-     * @return The classes dir. Never returns null.
-     */
-    @Deprecated
-    File getClassesDir();
-
-    /**
-     * DEPRECATED: Please use #output.resourcesDir instead.
-     * We needed to deprecate it to keep the DSL consistent.
-     * <p>
-     * Sets the directory to assemble the compiled classes into.
-     *
-     * @param classesDir the classes dir. Should not be null.
-     */
-    @Deprecated
-    void setClassesDir(File classesDir);
-
-    /**
-     * DEPRECATED: Please use #output property.
-     * We needed to deprecate this method because its name was confusing as actually means all output dirs, not only classes dir.
-     * <p>
-     * Returns {@link SourceSetOutput} that extends {@link FileCollection} which means that it provides all output directories (compiled classes, processed resources, etc.)
-     * <p>
-     * Provides a way to configure the default output dirs and specify additional output dirs - see {@link SourceSetOutput}
-     *
-     * @return The output dirs, as a {@link SourceSetOutput}.
-     */
-    @Deprecated
-    SourceSetOutput getClasses();
-
    /**
      * {@link SourceSetOutput} is a {@link FileCollection} of all output directories (compiled classes, processed resources, etc.)
-     *  and it provides means configure the default output dirs and register additional output dirs. See examples in {@link SourceSetOutput}
+     *  and it provides means to configure the default output dirs and register additional output dirs. See examples in {@link SourceSetOutput}
      *
      * @return The output dirs, as a {@link SourceSetOutput}.
      */
@@ -130,7 +93,7 @@ public interface SourceSet {
 
     /**
      * Registers a set of tasks which are responsible for compiling this source set into the classes directory. The
-     * paths are evaluated as for {@link org.gradle.api.Task#dependsOn(Object...)}.
+     * paths are evaluated as per {@link org.gradle.api.Task#dependsOn(Object...)}.
      *
      * @param taskPaths The tasks which compile this source set.
      * @return this
@@ -138,7 +101,7 @@ public interface SourceSet {
     SourceSet compiledBy(Object... taskPaths);
 
     /**
-     * Returns the non-Java resources which are to be copied into the class output directory.
+     * Returns the non-Java resources which are to be copied into the resources output directory.
      *
      * @return the resources. Never returns null.
      */
@@ -216,6 +179,13 @@ public interface SourceSet {
     String getCompileTaskName(String language);
 
     /**
+     * Returns the name of the Jar task for this source set, if such a task exists.
+     *
+     * @return The task name. Never returns null.
+     */
+    String getJarTaskName();
+
+    /**
      * Returns the name of a task for this source set.
      *
      * @param verb The action, may be null.
@@ -223,4 +193,16 @@ public interface SourceSet {
      * @return The task name, generally of the form ${verb}${name}${noun}
      */
     String getTaskName(String verb, String target);
+
+    /**
+     * Returns the name of the compile configuration for this source set.
+     * @return The configuration name
+     */
+    String getCompileConfigurationName();
+
+    /**
+     * Returns the name of the runtime configuration for this source set.
+     * @return The runtime configuration name
+     */
+    String getRuntimeConfigurationName();
 }

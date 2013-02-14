@@ -15,12 +15,19 @@
  */
 package org.gradle.api.internal;
 
-import groovy.lang.*;
+import groovy.lang.Closure;
 import groovy.lang.MissingMethodException;
+import groovy.lang.MissingPropertyException;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Presents a {@link DynamicObject} view of multiple objects at once.
+ *
+ * Can be used to provide a dynamic view of an object with enhancements.
+ */
 public abstract class CompositeDynamicObject extends AbstractDynamicObject {
     private DynamicObject[] objects = new DynamicObject[0];
     private DynamicObject[] updateObjects = new DynamicObject[0];
@@ -32,6 +39,26 @@ public abstract class CompositeDynamicObject extends AbstractDynamicObject {
 
     protected void setObjectsForUpdate(DynamicObject... objects) {
         this.updateObjects = objects;
+    }
+
+    @Override
+    public boolean isMayImplementMissingMethods() {
+        for (DynamicObject object : objects) {
+            if (object.isMayImplementMissingMethods()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isMayImplementMissingProperties() {
+        for (DynamicObject object : objects) {
+            if (object.isMayImplementMissingProperties()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -51,6 +78,19 @@ public abstract class CompositeDynamicObject extends AbstractDynamicObject {
                 return object.getProperty(name);
             }
         }
+
+        for (DynamicObject object : objects) {
+            if (object.isMayImplementMissingProperties()) {
+                try {
+                    return object.getProperty(name);
+                } catch (MissingPropertyException e) {
+                    if (e.getProperty() == null || !e.getProperty().equals(name)) {
+                        throw e;
+                    }
+                }
+            }
+        }
+
         return super.getProperty(name);
     }
 
@@ -62,6 +102,20 @@ public abstract class CompositeDynamicObject extends AbstractDynamicObject {
                 return;
             }
         }
+
+        for (DynamicObject object : updateObjects) {
+            if (object.isMayImplementMissingProperties()) {
+                try {
+                    object.setProperty(name, value);
+                    return;
+                } catch (MissingPropertyException e) {
+                    if (e.getProperty() == null || !e.getProperty().equals(name)) {
+                        throw e;
+                    }
+                }
+            }
+        }
+
         updateObjects[updateObjects.length - 1].setProperty(name, value);
     }
 
@@ -100,6 +154,18 @@ public abstract class CompositeDynamicObject extends AbstractDynamicObject {
                 Closure closure = (Closure) property;
                 closure.setResolveStrategy(Closure.DELEGATE_FIRST);
                 return closure.call(arguments);
+            }
+        }
+
+        for (DynamicObject object : objects) {
+            if (object.isMayImplementMissingMethods()) {
+                try {
+                    return object.invokeMethod(name, arguments);
+                } catch (MissingMethodException e) {
+                    if (e.isStatic() || !e.getMethod().equals(name) || !Arrays.equals(e.getArguments(), arguments)) {
+                        throw e;
+                    }
+                }
             }
         }
 

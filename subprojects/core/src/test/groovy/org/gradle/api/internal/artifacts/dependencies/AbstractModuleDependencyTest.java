@@ -22,28 +22,25 @@ import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.internal.artifacts.DefaultExcludeRule;
 import org.gradle.util.HelperUtil;
 import org.gradle.util.JUnit4GroovyMockery;
-
-import static org.gradle.util.Matchers.*;
-
 import org.gradle.util.WrapUtil;
-
-import static org.hamcrest.Matchers.*;
-
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
-
-import static org.junit.Assert.*;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.Map;
+
+import static org.gradle.util.Matchers.isEmpty;
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Hans Dockter
  */
 @RunWith(JMock.class)
 abstract public class AbstractModuleDependencyTest {
+    //TODO SF rework the remaining coverage of this hierarchy in the spirit of AbstractModuleDependencySpec and DefaultProjectDependencyTest
 
     protected abstract AbstractModuleDependency getDependency();
 
@@ -63,15 +60,15 @@ abstract public class AbstractModuleDependencyTest {
 
     @Test
     public void exclude() {
-        Map<String, String> excludeArgs1 = WrapUtil.toMap("key", "value");
-        Map<String, String> excludeArgs2 = WrapUtil.toMap("key2", "value2");
+        Map<String, String> excludeArgs1 = WrapUtil.toMap("group", "aGroup");
+        Map<String, String> excludeArgs2 = WrapUtil.toMap("module", "aModule");
 
         getDependency().exclude(excludeArgs1);
         getDependency().exclude(excludeArgs2);
 
         assertThat(getDependency().getExcludeRules().size(), equalTo(2));
-        assertThat(getDependency().getExcludeRules(), hasItem((ExcludeRule) new DefaultExcludeRule(excludeArgs1)));
-        assertThat(getDependency().getExcludeRules(), hasItem((ExcludeRule) new DefaultExcludeRule(excludeArgs2)));
+        assertThat(getDependency().getExcludeRules(), hasItem((ExcludeRule) new DefaultExcludeRule("aGroup", null)));
+        assertThat(getDependency().getExcludeRules(), hasItem((ExcludeRule) new DefaultExcludeRule(null, "aModule")));
     }
 
     @Test

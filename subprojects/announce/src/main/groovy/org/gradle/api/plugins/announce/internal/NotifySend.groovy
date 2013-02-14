@@ -16,10 +16,10 @@
 
 package org.gradle.api.plugins.announce.internal;
 
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+
+import org.gradle.api.internal.ProcessOperations
 import org.gradle.api.plugins.announce.Announcer
-import org.gradle.api.Project
+import org.gradle.internal.os.OperatingSystem
 
 /**
  * This class wraps the Ubuntu Notify Send functionality.
@@ -28,17 +28,26 @@ import org.gradle.api.Project
  */
 
 class NotifySend implements Announcer {
-    private static final Logger logger = LoggerFactory.getLogger(NotifySend)
+    private final IconProvider iconProvider
+    private final ProcessOperations processOperations
 
-    private final Project project
-
-    NotifySend(Project project) {
-        this.project = project
+    NotifySend(ProcessOperations processOperations, IconProvider iconProvider) {
+        this.processOperations = processOperations
+        this.iconProvider = iconProvider
     }
 
     void send(String title, String message) {
-        project.exec {
-            executable 'notify-send'
+        File exe = OperatingSystem.current().findInPath("notify-send")
+        if (exe == null) {
+            throw new AnnouncerUnavailableException("Could not find 'notify-send' in the path.")
+        }
+        processOperations.exec {
+            executable exe
+            def icon = iconProvider.getIcon(32, 32)
+            if (icon) {
+                args '-i', icon.absolutePath
+            }
+            args '--hint=int:transient:1'
             args title, message
         }
     }

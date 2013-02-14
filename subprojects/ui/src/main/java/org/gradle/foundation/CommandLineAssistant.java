@@ -15,10 +15,9 @@
  */
 package org.gradle.foundation;
 
-import org.gradle.initialization.DefaultCommandLineConverter;
 import org.gradle.logging.internal.LoggingCommandLineConverter;
+import org.gradle.util.internal.ArgumentsSplitter;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -28,16 +27,7 @@ import java.util.List;
  * @author mhunsicker
  */
 public class CommandLineAssistant {
-    private final DefaultCommandLineConverter commandLineConverter;
     private final LoggingCommandLineConverter loggingCommandLineConverter = new LoggingCommandLineConverter();
-
-    public CommandLineAssistant() {
-        commandLineConverter = new DefaultCommandLineConverter();
-    }
-
-    public DefaultCommandLineConverter getCommandLineConverter() {
-        return commandLineConverter;
-    }
 
     public LoggingCommandLineConverter getLoggingCommandLineConverter() {
         return loggingCommandLineConverter;
@@ -50,35 +40,7 @@ public class CommandLineAssistant {
      * @return a string array of the separate command line arguments.
      */
     public static String[] breakUpCommandLine(String fullCommandLine) {
-        List<String> commandLineArguments = new ArrayList<String>();
-
-        Character currentQuote = null;
-        StringBuilder currentOption = new StringBuilder();
-        boolean hasOption = false;
-
-        for (int index = 0; index < fullCommandLine.length(); index++) {
-            char c = fullCommandLine.charAt(index);
-            if (currentQuote == null && Character.isWhitespace(c)) {
-                if (hasOption) {
-                    commandLineArguments.add(currentOption.toString());
-                    hasOption = false;
-                    currentOption.setLength(0);
-                }
-            } else if (currentQuote == null && (c == '"' || c == '\'')) {
-                currentQuote = c;
-                hasOption = true;
-            } else if (currentQuote != null && c == currentQuote) {
-                currentQuote = null;
-            } else {
-                currentOption.append(c);
-                hasOption = true;
-            }
-        }
-
-        if (hasOption) {
-            commandLineArguments.add(currentOption.toString());
-        }
-
+        List<String> commandLineArguments = ArgumentsSplitter.split(fullCommandLine);
         return commandLineArguments.toArray(new String[commandLineArguments.size()]);
     }
 
@@ -94,7 +56,7 @@ public class CommandLineAssistant {
     public boolean hasShowStacktraceDefined(String[] commandLineArguments) {
         return hasCommandLineOptionsDefined(commandLineArguments, new CommandLineSearch() {
             public boolean contains(String commandLine) {
-                return commandLineConverter.getShowStacktrace(commandLine) != null;
+                return loggingCommandLineConverter.getShowStacktrace(commandLine) != null;
             }
         });
     }

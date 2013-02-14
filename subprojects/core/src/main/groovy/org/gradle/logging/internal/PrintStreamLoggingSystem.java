@@ -18,8 +18,8 @@ package org.gradle.logging.internal;
 import org.gradle.api.Action;
 import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.StandardOutputListener;
+import org.gradle.internal.TimeProvider;
 import org.gradle.util.LinePerThreadBufferingOutputStream;
-import org.gradle.util.TimeProvider;
 
 import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,7 +35,7 @@ abstract class PrintStreamLoggingSystem implements LoggingSystem {
         public void execute(String output) {
             destination.get().onOutput(output);
         }
-    }, true);
+    });
     private StandardOutputListener original;
     private LogLevel logLevel;
     private final StandardOutputListener listener;

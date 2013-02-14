@@ -20,7 +20,7 @@ import org.gradle.api.Action;
 import org.gradle.api.logging.LogLevel;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.util.JUnit4GroovyMockery;
-import org.gradle.util.ObservableUrlClassLoader;
+import org.gradle.util.MutableURLClassLoader;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
@@ -32,14 +32,14 @@ import java.net.URL;
 import java.util.Collection;
 import java.util.List;
 
-import static org.gradle.util.WrapUtil.*;
+import static org.gradle.util.WrapUtil.toList;
 
 @RunWith(JMock.class)
 public class ImplementationClassLoaderWorkerTest {
     private final JUnit4Mockery context = new JUnit4GroovyMockery();
     private final ClassLoader applicationClassLoader = getClass().getClassLoader();
     private final LoggingManagerInternal loggingManager = context.mock(LoggingManagerInternal.class);
-    private final ObservableUrlClassLoader implementationClassLoader = new ObservableUrlClassLoader(applicationClassLoader);
+    private final MutableURLClassLoader implementationClassLoader = new MutableURLClassLoader(applicationClassLoader);
     private final WorkerContext workerContext = context.mock(WorkerContext.class);
     private final SerializableMockHelper helper = new SerializableMockHelper();
 
@@ -47,7 +47,6 @@ public class ImplementationClassLoaderWorkerTest {
     public void createsClassLoaderAndInstantiatesAndExecutesWorker() throws Exception {
         final Action<WorkerContext> action = context.mock(Action.class);
         final List<URL> implementationClassPath = toList(new File(".").toURI().toURL());
-
         Action<WorkerContext> serializableAction = helper.serializable(action, implementationClassLoader);
         ImplementationClassLoaderWorker worker = new TestImplementationClassLoaderWorker(LogLevel.DEBUG, toList("a", "b"), implementationClassPath, serializableAction);
 
@@ -66,7 +65,7 @@ public class ImplementationClassLoaderWorkerTest {
 
     private class TestImplementationClassLoaderWorker extends ImplementationClassLoaderWorker {
         private TestImplementationClassLoaderWorker(LogLevel logLevel, Collection<String> sharedPackages,
-                                    Collection<URL> implementationClassPath, Action<WorkerContext> workerAction) {
+                                                    Collection<URL> implementationClassPath, Action<WorkerContext> workerAction) {
             super(logLevel, sharedPackages, implementationClassPath, workerAction);
         }
 
@@ -76,8 +75,8 @@ public class ImplementationClassLoaderWorkerTest {
         }
 
         @Override
-        protected ObservableUrlClassLoader createImplementationClassLoader(ClassLoader system,
-                                                                           ClassLoader application) {
+        protected MutableURLClassLoader createImplementationClassLoader(ClassLoader system,
+                                                                        ClassLoader application) {
             return implementationClassLoader;
         }
     }

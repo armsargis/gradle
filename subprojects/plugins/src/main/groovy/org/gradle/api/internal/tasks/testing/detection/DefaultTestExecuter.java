@@ -17,7 +17,6 @@
 package org.gradle.api.internal.tasks.testing.detection;
 
 import org.gradle.api.file.FileTree;
-import org.gradle.api.internal.Factory;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
 import org.gradle.api.internal.tasks.testing.TestFramework;
 import org.gradle.api.internal.tasks.testing.TestResultProcessor;
@@ -27,9 +26,10 @@ import org.gradle.api.internal.tasks.testing.processors.RestartEveryNTestClassPr
 import org.gradle.api.internal.tasks.testing.processors.TestMainAction;
 import org.gradle.api.internal.tasks.testing.worker.ForkingTestClassProcessor;
 import org.gradle.api.tasks.testing.Test;
+import org.gradle.internal.Factory;
+import org.gradle.internal.TrueTimeProvider;
 import org.gradle.messaging.actor.ActorFactory;
 import org.gradle.process.internal.WorkerProcessBuilder;
-import org.gradle.util.TrueTimeProvider;
 
 /**
  * The default test class scanner factory.
@@ -68,6 +68,8 @@ public class DefaultTestExecuter implements TestExecuter {
         Runnable detector;
         if (testTask.isScanForTestClasses()) {
             TestFrameworkDetector testFrameworkDetector = testTask.getTestFramework().getDetector();
+            testFrameworkDetector.setTestClassesDirectory(testTask.getTestClassesDir());
+            testFrameworkDetector.setTestClasspath(testTask.getClasspath());
             detector = new DefaultTestClassScanner(testClassFiles, testFrameworkDetector, processor);
         } else {
             detector = new DefaultTestClassScanner(testClassFiles, null, processor);

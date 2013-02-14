@@ -13,24 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+apply from: "$rootDir/gradle/providedConfiguration.gradle"
+
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
     compile project(':core')
     compile project(':plugins')
+    compile project(':reporting')
 
-    compile "org.codenarc:CodeNarc:0.13@jar"
     compile libraries.slf4j_api
 
-    // CodeNarc dependencies
-    runtime libraries.log4j_to_slf4j,
-            "org.gmetrics:GMetrics:0.3@jar"
-
-    // Checkstyle dependencies
-    runtime "com.puppycrawl.tools:checkstyle:5.3@jar",
-            libraries.guava,
-            libraries.antlr,
-            "commons-beanutils:commons-beanutils-core:1.8.3@jar"
+    // minimal dependencies to make our code compile
+    // we don't ship these dependencies because findbugs plugin will download them (and more) at runtime
+    provided "com.google.code.findbugs:findbugs:2.0.1@jar"
+    provided "com.google.code.findbugs:bcel:2.0.1@jar"
+    provided "dom4j:dom4j:1.6.1@jar"
+    provided "jaxen:jaxen:1.1.1@jar"
 }
 
 useTestFixtures()
+
+

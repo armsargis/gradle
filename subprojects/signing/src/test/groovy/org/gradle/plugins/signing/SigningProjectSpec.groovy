@@ -15,15 +15,19 @@
  */
 package org.gradle.plugins.signing
 
-import spock.lang.*
 import org.gradle.api.Project
-import org.gradle.api.tasks.bundling.*
+import org.gradle.api.tasks.bundling.Jar
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.HelperUtil
+import org.junit.Rule
+import spock.lang.Specification
 
 class SigningProjectSpec extends Specification {
     
     static final DEFAULT_KEY_SET = "gradle"
     
+    @Rule public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
+        
     Project project = HelperUtil.createRootProject()
     
     private assertProject() {
@@ -86,8 +90,17 @@ class SigningProjectSpec extends Specification {
     }
     
     def getResourceFile(path) {
-        def url = getClass().classLoader.getResource(path)
-        new File(url.toURI())
+        def copiedFile = tmpDir.file(path)
+        if (!copiedFile.exists()) {
+            
+            def url = getClass().classLoader.getResource(path)
+            def file = new File(url.toURI())
+            if (file.exists()) {
+                copiedFile.copyFrom(file)
+            }
+        }
+        
+        copiedFile
     }
     
     def useJavadocAndSourceJars() {

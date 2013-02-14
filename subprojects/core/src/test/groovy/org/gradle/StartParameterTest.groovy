@@ -16,208 +16,229 @@
 
 package org.gradle
 
-import static org.gradle.util.Matchers.*
-
-import org.gradle.api.internal.artifacts.ProjectDependenciesBuildInstruction
 import org.gradle.api.logging.LogLevel
-import org.gradle.execution.BuildExecuter
-import org.gradle.execution.DefaultBuildExecuter
-import org.gradle.execution.DryRunBuildExecuter
-import org.gradle.groovy.scripts.ScriptSource
-import org.gradle.groovy.scripts.StringScriptSource
-import org.gradle.groovy.scripts.UriScriptSource
-import org.gradle.initialization.BuildFileProjectSpec
-import org.gradle.initialization.DefaultProjectSpec
-import org.gradle.initialization.ProjectDirectoryProjectSpec
-import org.gradle.initialization.ProjectSpec
-import org.gradle.util.TemporaryFolder
-import org.junit.Rule
-import org.junit.Test
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.SetSystemProperties
+import org.junit.Rule
+import spock.lang.Specification
+
+import static org.gradle.util.Matchers.isSerializable
+import static org.junit.Assert.assertThat
 
 /**
  * @author Hans Dockter
  */
-class StartParameterTest {
-    @Rule
-    public TemporaryFolder tmpDir = new TemporaryFolder();
-    @Rule
-    public SetSystemProperties systemProperties = new SetSystemProperties()
+class StartParameterTest extends Specification {
+    @Rule private TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
+    @Rule private SetSystemProperties systemProperties = new SetSystemProperties()
 
-    @Test public void testNewInstance() {
-        StartParameter testObj = new StartParameter()
-        testObj.settingsFile = 'settingsfile' as File
-        testObj.buildFile = 'buildfile' as File
-        testObj.taskNames = ['a']
-        testObj.projectDependenciesBuildInstruction = new ProjectDependenciesBuildInstruction(true)
-        testObj.currentDir = new File('a')
-        testObj.searchUpwards = false
-        testObj.projectProperties = [a: 'a']
-        testObj.systemPropertiesArgs = [b: 'b']
-        testObj.gradleUserHomeDir = new File('b')
-        testObj.initScripts = [new File('init script'), new File("/path/to/another init script")]
-        testObj.cacheUsage = CacheUsage.ON
-        testObj.logLevel = LogLevel.WARN
-        testObj.colorOutput = false
+    void "new instance has correct state"() {
+        def parameter = new StartParameter()
+        parameter.settingsFile = 'settingsfile' as File
+        parameter.buildFile = 'buildfile' as File
+        parameter.taskNames = ['a']
+        parameter.buildProjectDependencies = true
+        parameter.currentDir = new File('a')
+        parameter.searchUpwards = false
+        parameter.projectProperties = [a: 'a']
+        parameter.systemPropertiesArgs = [b: 'b']
+        parameter.gradleUserHomeDir = new File('b')
+        parameter.initScripts = [new File('init script'), new File("/path/to/another init script")]
+        parameter.cacheUsage = CacheUsage.ON
+        parameter.logLevel = LogLevel.WARN
+        parameter.colorOutput = false
+        parameter.continueOnFailure = true
+        parameter.rerunTasks = true;
+        parameter.refreshDependencies = true;
+        parameter.recompileScripts = true;
 
-        StartParameter startParameter = testObj.newInstance()
-        assertEquals(testObj, startParameter)
+        when:
+        def newInstance = parameter.newInstance()
+
+        then:
+        parameter == newInstance
+
+        when:
+        newInstance.continueOnFailure = false
+
+        then:
+        parameter != newInstance
     }
 
-    @Test public void testDefaultValues() {
-        StartParameter parameter = new StartParameter();
-        assertThat(parameter.gradleUserHomeDir, equalTo(StartParameter.DEFAULT_GRADLE_USER_HOME))
-        assertThat(parameter.currentDir, equalTo(new File(System.getProperty("user.dir")).getCanonicalFile()))
+    void "mutable collections are not shared"() {
+        def parameter = new StartParameter()
+        parameter.taskNames = ['a']
+        parameter.excludedTaskNames = ['foo']
+        parameter.projectProperties = [a: 'a']
+        parameter.systemPropertiesArgs = [b: 'b']
+        parameter.initScripts = [new File('init script'), new File("/path/to/another init script")]
 
-        assertThat(parameter.buildFile, nullValue())
-        assertThat(parameter.settingsScriptSource, nullValue())
+        when:
+        def newInstance = parameter.newInstance()
 
-        assertThat(parameter.logLevel, equalTo(LogLevel.LIFECYCLE))
-        assertTrue(parameter.colorOutput)
-        assertThat(parameter.taskNames, isEmpty())
-        assertThat(parameter.excludedTaskNames, isEmpty())
-        assertThat(parameter.projectProperties, isEmptyMap())
-        assertThat(parameter.systemPropertiesArgs, isEmptyMap())
-        assertThat(parameter.buildExecuter, instanceOf(DefaultBuildExecuter))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new DefaultProjectSpec(parameter.currentDir)))
-        assertFalse(parameter.dryRun)
+        then:
+        !parameter.initScripts.is(newInstance.initScripts)
+        !parameter.taskNames.is(newInstance.taskNames)
+        //TODO SF is this intentional that excludedTaskNames are not included?
+//        !parameter.excludedTaskNames.is(newInstance.excludedTaskNames)
+        !parameter.projectProperties.is(newInstance.projectProperties)
+        !parameter.systemPropertiesArgs.is(newInstance.systemPropertiesArgs)
+
+        and:
+        parameter.initScripts == newInstance.initScripts
+        parameter.taskNames == newInstance.taskNames
+//        parameter.excludedTaskNames == newInstance.excludedTaskNames
+        parameter.projectProperties == newInstance.projectProperties
+        parameter.systemPropertiesArgs == newInstance.systemPropertiesArgs
     }
 
-    @Test public void testDefaultWithGradleUserHomeSystemProp() {
-        File gradleUserHome = tmpDir.file("someGradleUserHomePath")
+    void "default values"() {
+        def parameter = new StartParameter();
+
+        expect:
+        parameter.gradleUserHomeDir == StartParameter.DEFAULT_GRADLE_USER_HOME
+        parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
+
+        parameter.buildFile == null
+        parameter.settingsFile == null
+
+        parameter.logLevel == LogLevel.LIFECYCLE
+        parameter.colorOutput
+        parameter.taskNames.empty
+        parameter.excludedTaskNames.empty
+        parameter.projectProperties.isEmpty()
+        parameter.systemPropertiesArgs.isEmpty()
+        !parameter.dryRun
+        !parameter.continueOnFailure
+        parameter.refreshOptions == RefreshOptions.NONE
+        !parameter.rerunTasks
+        !parameter.recompileScripts
+        !parameter.refreshDependencies
+
+        assertThat(parameter, isSerializable())
+    }
+
+    void "uses gradle user home system property"() {
+        def gradleUserHome = tmpDir.file("someGradleUserHomePath")
         System.setProperty(StartParameter.GRADLE_USER_HOME_PROPERTY_KEY, gradleUserHome.absolutePath)
-        StartParameter parameter = new StartParameter();
-        assertThat(parameter.gradleUserHomeDir, equalTo(gradleUserHome))
+
+        when:
+        def parameter = new StartParameter()
+        then:
+        parameter.gradleUserHomeDir == gradleUserHome
     }
 
-    @Test public void testSetCurrentDir() {
+    void "canonicalizes current dir"() {
         StartParameter parameter = new StartParameter()
         File dir = new File('current')
+
+        when:
         parameter.currentDir = dir
 
-        assertThat(parameter.currentDir, equalTo(dir.canonicalFile))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new DefaultProjectSpec(dir.canonicalFile)))
+        then:
+        parameter.currentDir == dir.canonicalFile
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetBuildFile() {
+    void "can configure build file"() {
         StartParameter parameter = new StartParameter()
         File file = new File('test/build file')
+
+        when:
         parameter.buildFile = file
 
-        assertThat(parameter.buildFile, equalTo(file.canonicalFile))
-        assertThat(parameter.currentDir, equalTo(file.canonicalFile.parentFile))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new BuildFileProjectSpec(file.canonicalFile)))
+        then:
+        parameter.buildFile == file.canonicalFile
+        parameter.currentDir == file.canonicalFile.parentFile
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetNullBuildFile() {
+    void "can configure null build file"() {
         StartParameter parameter = new StartParameter()
         parameter.buildFile = new File('test/build file')
+
+        when:
         parameter.buildFile = null
 
-        assertThat(parameter.buildFile, nullValue())
-        assertThat(parameter.currentDir, equalTo(new File(System.getProperty("user.dir")).getCanonicalFile()))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new DefaultProjectSpec(parameter.currentDir)))
-        assertThat(parameter.initScripts, equalTo(Collections.emptyList()))
+        then:
+        parameter.buildFile == null
+        parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
+        parameter.initScripts.empty
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetProjectDir() {
+    void "can configure project dir"() {
         StartParameter parameter = new StartParameter()
         File file = new File('test/project dir')
+
+        when:
         parameter.projectDir = file
 
-        assertThat(parameter.currentDir, equalTo(file.canonicalFile))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new ProjectDirectoryProjectSpec(file.canonicalFile)))
+        then:
+        parameter.currentDir == file.canonicalFile
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetNullProjectDir() {
+    void "can configure null project dir"() {
         StartParameter parameter = new StartParameter()
         parameter.projectDir = new File('test/project dir')
+
+        when:
         parameter.projectDir = null
 
-        assertThat(parameter.currentDir, equalTo(new File(System.getProperty("user.dir")).getCanonicalFile()))
-        assertThat(parameter.defaultProjectSelector, reflectionEquals(new DefaultProjectSpec(parameter.currentDir)))
+        then:
+        parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetSettingsFile() {
+    void "can configure settings file"() {
         StartParameter parameter = new StartParameter()
         File file = new File('some dir/settings file')
+
+        when:
         parameter.settingsFile = file
 
-        assertThat(parameter.currentDir, equalTo(file.canonicalFile.parentFile))
-        assertThat(parameter.settingsScriptSource, instanceOf(UriScriptSource.class))
-        assertThat(parameter.settingsScriptSource.resource.file, equalTo(file.canonicalFile))
+        then:
+        parameter.currentDir == file.canonicalFile.parentFile
+        parameter.settingsFile == file.canonicalFile
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetNullSettingsFile() {
+    void "can configure null settings file"() {
         StartParameter parameter = new StartParameter()
+
+        when:
         parameter.settingsFile = null
 
-        assertThat(parameter.settingsScriptSource, nullValue())
+        then:
+        parameter.settingsFile == null
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetSettingsScriptSource() {
-        StartParameter parameter = new StartParameter()
-        parameter.settingsFile = new File('settings file')
-
-        ScriptSource scriptSource = {} as ScriptSource
-
-        parameter.settingsScriptSource = scriptSource
-
-        assertThat(parameter.settingsScriptSource, sameInstance(scriptSource))
-    }
-
-    @Test public void testSetTaskNames() {
-        StartParameter parameter = new StartParameter()
-        parameter.taskNames = ['a', 'b']
-        assertThat(parameter.buildExecuter, instanceOf(DefaultBuildExecuter))
-        assertThat(parameter.buildExecuter.delegate.names, equalTo(['a', 'b']))
-    }
-
-    @Test public void testSetTaskNamesUsesDefaultExecuter() {
-        StartParameter parameter = new StartParameter()
-
-        parameter.setBuildExecuter({} as BuildExecuter)
-        parameter.taskNames = []
-        assertThat(parameter.buildExecuter, instanceOf(DefaultBuildExecuter))
-    }
-
-    @Test public void testSetExcludedTaskNames() {
-        StartParameter parameter = new StartParameter()
-        parameter.excludedTaskNames = ['a', 'b']
-        assertThat(parameter.buildExecuter, instanceOf(DefaultBuildExecuter))
-        assertThat(parameter.buildExecuter.excludedTaskNames, equalTo(['a', 'b'] as Set))
-    }
-
-    @Test public void testUseEmbeddedBuildFile() {
+    void "can use empty settings script"() {
         StartParameter parameter = new StartParameter();
-        parameter.useEmbeddedBuildFile("<content>")
-        assertThat(parameter.buildScriptSource, instanceOf(StringScriptSource.class))
-        assertThat(parameter.buildScriptSource.resource.text, equalTo("<content>"))
-        assertThat(parameter.settingsScriptSource, instanceOf(StringScriptSource.class))
-        assertThat(parameter.settingsScriptSource.resource.text, equalTo(""))
-        assertThat(parameter.searchUpwards, equalTo(false))
+
+        when:
+        parameter.useEmptySettings()
+
+        then:
+        parameter.settingsFile == null
+        !parameter.searchUpwards
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testSetNullUserHomeDir() {
+    void "can configure null user home dir"() {
         StartParameter parameter = new StartParameter()
+
+        when:
         parameter.gradleUserHomeDir = null
-        assertThat(parameter.gradleUserHomeDir, equalTo(StartParameter.DEFAULT_GRADLE_USER_HOME))
+
+        then:
+        parameter.gradleUserHomeDir == StartParameter.DEFAULT_GRADLE_USER_HOME
+        assertThat(parameter, isSerializable())
     }
 
-    @Test public void testWrapsExecuterWhenDryRunIsTrue() {
-        StartParameter parameter = new StartParameter()
-        def originalExecuter = [:] as BuildExecuter
-        parameter.buildExecuter = originalExecuter
-        parameter.dryRun = true
-        assertThat(parameter.buildExecuter, instanceOf(DryRunBuildExecuter))
-        assertThat(parameter.buildExecuter.delegate, sameInstance(originalExecuter))
-        parameter.dryRun = false
-        assertThat(parameter.buildExecuter, sameInstance(originalExecuter))
-    }
-
-    @Test public void testNewBuild() {
+    void "creates parameter for new build"() {
         StartParameter parameter = new StartParameter()
 
         // Copied properties
@@ -232,23 +253,91 @@ class StartParameterTest {
         parameter.settingsFile = new File("settings file")
         parameter.taskNames = ['task1']
         parameter.excludedTaskNames = ['excluded1']
-        parameter.defaultProjectSelector = [:] as ProjectSpec
         parameter.dryRun = true
+        parameter.continueOnFailure = true
+        parameter.recompileScripts = true
+        parameter.rerunTasks = true
+        parameter.refreshDependencies = true
 
+        assertThat(parameter, isSerializable())
+
+        when:
         StartParameter newParameter = parameter.newBuild();
 
-        assertThat(newParameter, not(equalTo(parameter)));
+        then:
+        newParameter != parameter
 
-        assertThat(newParameter.gradleUserHomeDir, equalTo(parameter.gradleUserHomeDir));
-        assertThat(newParameter.cacheUsage, equalTo(parameter.cacheUsage));
-        assertThat(newParameter.logLevel, equalTo(parameter.logLevel));
-        assertThat(newParameter.colorOutput, equalTo(parameter.colorOutput));
+        newParameter.gradleUserHomeDir == parameter.gradleUserHomeDir
+        newParameter.cacheUsage == parameter.cacheUsage
+        newParameter.logLevel == parameter.logLevel
+        newParameter.colorOutput == parameter.colorOutput
+        newParameter.continueOnFailure == parameter.continueOnFailure
+        newParameter.refreshDependencies == parameter.refreshDependencies
+        newParameter.rerunTasks == parameter.rerunTasks
+        newParameter.recompileScripts == parameter.recompileScripts
 
-        assertThat(newParameter.buildFile, nullValue())
-        assertThat(newParameter.taskNames, isEmpty())
-        assertThat(newParameter.excludedTaskNames, isEmpty())
-        assertThat(newParameter.currentDir, equalTo(new File(System.getProperty("user.dir")).getCanonicalFile()))
-        assertThat(newParameter.defaultProjectSelector, reflectionEquals(new DefaultProjectSpec(newParameter.currentDir)))
-        assertFalse(newParameter.dryRun)
+        newParameter.buildFile == null
+        newParameter.taskNames.empty
+        newParameter.excludedTaskNames.empty
+        newParameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
+        !newParameter.dryRun
+        assertThat(newParameter, isSerializable())
+    }
+    
+    void "system properties are merged"() {
+        def parameter = new StartParameter()
+
+        System.properties.clear()
+        System.properties.a = "sys a"
+        System.properties.c = "sys c"
+
+        parameter.systemPropertiesArgs= [a: 'a', b: 'b']
+
+        expect:
+        parameter.mergedSystemProperties.sort() == [a: 'a', b: 'b', c: 'sys c']
+    }
+
+    void "gets all init scripts"() {
+        def gradleUserHomeDir = tmpDir.testDirectory.createDir("gradleUserHomeDie")
+        def gradleHomeDir = tmpDir.testDirectory.createDir("gradleHomeDir")
+        StartParameter parameter = new StartParameter()
+
+        when:
+        parameter.gradleUserHomeDir = gradleUserHomeDir
+        parameter.gradleHomeDir = gradleHomeDir
+
+        then:
+        parameter.allInitScripts.empty
+
+        when:
+        def userMainInit = gradleUserHomeDir.createFile("init.gradle")
+        then:
+        parameter.allInitScripts == [userMainInit]
+
+        when:
+        def userInit1 = gradleUserHomeDir.createFile("init.d/1.gradle")
+        def userInit2 = gradleUserHomeDir.createFile("init.d/2.gradle")
+
+        then:
+        parameter.allInitScripts == [userMainInit, userInit1, userInit2]
+
+        when:
+        def distroInit1 = gradleHomeDir.createFile("init.d/1.gradle")
+        def distroInit2 = gradleHomeDir.createFile("init.d/2.gradle")
+
+        then:
+        parameter.allInitScripts == [userMainInit, userInit1, userInit2, distroInit1, distroInit2]
+    }
+
+    def "knows if parallel feature was configured"() {
+        def parameter = new StartParameter()
+        assert !parameter.parallelThreadCountConfigured
+
+        when:
+        parameter.setParallelThreadCount(15)
+
+        then:
+        parameter.parallelThreadCount == 15
+        parameter.parallelThreadCountConfigured
     }
 }

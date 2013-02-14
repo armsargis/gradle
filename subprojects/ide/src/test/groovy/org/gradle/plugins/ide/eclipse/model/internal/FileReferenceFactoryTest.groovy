@@ -15,14 +15,14 @@
  */
 package org.gradle.plugins.ide.eclipse.model.internal
 
-import spock.lang.Specification
-import org.junit.Rule
-import org.gradle.util.TemporaryFolder
-import org.gradle.util.TestFile
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.Matchers
+import org.junit.Rule
+import spock.lang.Specification
 
 class FileReferenceFactoryTest extends Specification {
-    @Rule final TemporaryFolder tmpDir = new TemporaryFolder()
+    @Rule final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     final TestFile rootDir = tmpDir.createDir("root")
     final FileReferenceFactory factory = new FileReferenceFactory()
 
@@ -73,6 +73,22 @@ class FileReferenceFactoryTest extends Specification {
         !reference.relativeToPathVariable
     }
 
+    def "creates a reference from a jar url"() {
+        TestFile file = tmpDir.file("file.txt")
+
+        expect:
+        def reference = factory.fromJarURI(jarUrL(file))
+        reference.file == file
+        reference.path == relpath(file)
+        reference.jarURL == jarUrL(file);
+        !reference.relativeToPathVariable
+    }
+
+    def "creates null reference for a null jar url"() {
+        expect:
+        factory.fromJarURI(null) == null
+    }
+
     def "creates null reference for a null file path"() {
         expect:
         factory.fromPath(null) == null
@@ -106,5 +122,9 @@ class FileReferenceFactoryTest extends Specification {
 
     private String relpath(File file) {
         return file.absolutePath.replace(File.separator, '/')
+    }
+
+    private String jarUrL(File file) {
+        return "jar:${file.toURI()}!/"
     }
 }

@@ -17,8 +17,14 @@
 package org.gradle.util;
 
 import org.apache.commons.lang.StringEscapeUtils;
+import org.gradle.internal.SystemProperties;
+
+import java.io.File;
+import java.util.regex.Pattern;
 
 public class TextUtil {
+    private static final Pattern WHITESPACE = Pattern.compile("\\s*");
+
     /**
      * Returns the line separator for Windows.
      */
@@ -44,22 +50,62 @@ public class TextUtil {
      * Converts all line separators in the specified string to the specified line separator.
      */
     public static String convertLineSeparators(String str, String sep) {
-        return str.replaceAll("\r\n|\r|\n", sep);
+        return str == null ? null : str.replaceAll("\r\n|\r|\n", sep);
     }
 
     /**
      * Converts all line separators in the specified string to the the platform's line separator.
      */
     public static String toPlatformLineSeparators(String str) {
-        return convertLineSeparators(str, getPlatformLineSeparator());
+        return str == null ? null : convertLineSeparators(str, getPlatformLineSeparator());
     }
-    
+
     /**
-     * <p>Escapes the toString() representation of {@code obj} for use in a literal string.</p>
-     * 
-     * <p>This is useful for interpolating variables into script strings, as well as in other situations.</p>
+     * Converts all native file separators in the specified string to '/'.
+     */
+    public static String normaliseFileSeparators(String path) {
+        return path.replaceAll(Pattern.quote(File.separator), "/");
+    }
+
+    /**
+     * Escapes the toString() representation of {@code obj} for use in a literal string.
+     * This is useful for interpolating variables into script strings, as well as in other situations.
      */
     public static String escapeString(Object obj) {
-        return StringEscapeUtils.escapeJava(obj.toString());
+        return obj == null ? null : StringEscapeUtils.escapeJava(obj.toString());
+    }
+
+    /**
+     * Tells whether the specified string contains any whitespace characters.
+     */
+    public static boolean containsWhitespace(String str) {
+        for (int i = 0; i < str.length(); i++) {
+            if (Character.isWhitespace(str.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Indents every line of {@code text} by {@code indent}. Empty lines
+     * and lines that only contain whitespace are not indented.
+     */
+    public static String indent(String text, String indent) {
+        StringBuilder builder = new StringBuilder();
+        String[] lines = text.split("\n");
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (!WHITESPACE.matcher(line).matches()) {
+                builder.append(indent);
+            }
+            builder.append(line);
+            if (i < lines.length - 1) {
+                builder.append('\n');
+            }
+        }
+
+        return builder.toString();
     }
 }

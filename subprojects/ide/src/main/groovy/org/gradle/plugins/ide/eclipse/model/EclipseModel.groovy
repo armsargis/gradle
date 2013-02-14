@@ -19,7 +19,7 @@ import org.gradle.util.ConfigureUtil
 
 /**
  * DSL-friendly model of the Eclipse project information.
- * First point of entry when it comes to customizing the eclipse generation
+ * First point of entry for customizing Eclipse project generation.
  *
  * <pre autoTested=''>
  * apply plugin: 'java'
@@ -75,7 +75,7 @@ class EclipseModel {
      * <p>
      * For examples see docs for {@link EclipseWtp}
      */
-    EclipseWtp wtp = new EclipseWtp()
+    EclipseWtp wtp
 
     /**
      * Configures eclipse project information
@@ -134,7 +134,7 @@ class EclipseModel {
     void pathVariables(Map<String, File> pathVariables) {
         assert pathVariables != null
         classpath.pathVariables.putAll pathVariables
-        if (wtp.component) {
+        if (wtp && wtp.component) {
             wtp.component.pathVariables.putAll pathVariables
         }
     }

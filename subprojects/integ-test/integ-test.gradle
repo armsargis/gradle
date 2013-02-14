@@ -1,30 +1,38 @@
 dependencies {
-    groovy libraries.groovy_depends
+    groovy libraries.groovy
 
     integTestCompile project(':toolingApi')
     integTestCompile project(':launcher')
+    integTestCompile project(':coreImpl')
     integTestCompile libraries.ant
     integTestCompile libraries.xmlunit
+    integTestCompile libraries.jsoup
 
     integTestRuntime rootProject.configurations.testRuntime.allDependencies
 }
 
 integTestTasks.all {
-    dependsOn ':publishLocalArchives', ':binZip', ':allZip', ':srcZip', ':docs:userguideDocbook'
+    dependsOn({ rootProject.getTasksByName('publishLocalArchives', true) }, ':docs:userguideDocbook')
 
     jvmArgs '-Xmx512m', '-XX:MaxPermSize=256m'
 
     doFirst {
         systemProperties['integTest.userGuideInfoDir'] = project(':docs').docbookSrc
         systemProperties['integTest.userGuideOutputDir'] = new File(project(':docs').samplesSrcDir, "userguideOutput").absolutePath
-        systemProperties['integTest.distsDir'] = rootProject.distsDir.absolutePath
-        systemProperties['integTest.libsRepo'] = rootProject.file('build/repo')
         forkEvery = 15
-        maxParallelForks = guessMaxForks()
-
-        if (isDevBuild()) {
-            exclude 'org/gradle/integtests/DistributionIntegrationTest.*'
-            exclude 'org/gradle/integtests/tooling/**/*Suite.*'
-        }
     }
+
+    // You can filter the userguide samples to be run by specifying this system property.
+    // E.g. ./gradlew integTest:integTest -D:integTest:integTest.single=UserGuideSamplesIntegrationTest -Dorg.gradle.userguide.samples.filter=signing/.+
+    systemProperty "org.gradle.userguide.samples.filter", System.getProperty("org.gradle.userguide.samples.filter")
 }
+
+daemonIntegTest {
+    exclude "**/CrossVersionCompatibilityIntegrationTest.class" //ignored just in case to avoid old daemon implementation
+}
+
+parallelIntegTest {
+    systemProperty "org.gradle.userguide.samples.exclude", "multiProjectBuildSrc,multiprojectMessagesHack"
+}
+
+useClassycle()

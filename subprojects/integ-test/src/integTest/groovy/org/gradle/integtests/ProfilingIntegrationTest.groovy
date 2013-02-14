@@ -15,7 +15,9 @@
  */
 package org.gradle.integtests
 
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 class ProfilingIntegrationTest extends AbstractIntegrationSpec {
     def "can generate profiling report"() {
@@ -25,11 +27,15 @@ allprojects {
     apply plugin: 'java'
 }
 '''
-
         when:
         executer.withArguments("--profile").withTasks("build").run()
 
         then:
-        file('build/reports/profile').listFiles().find { it.name ==~ /profile-.+.html/ }
+        def reportFile = file('build/reports/profile').listFiles().find { it.name ==~ /profile-.+.html/ }
+        Document document = Jsoup.parse(reportFile, null);
+        !document.select("TD:contains(:jar)").isEmpty()
+        !document.select("TD:contains(:a:jar)").isEmpty()
+        !document.select("TD:contains(:b:jar)").isEmpty()
+        !document.select("TD:contains(:c:jar)").isEmpty()
     }
 }

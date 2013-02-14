@@ -24,7 +24,7 @@ import spock.lang.Issue
 
 class IdeaModuleIntegrationTest extends AbstractIdeIntegrationTest {
     @Rule
-    public final TestResources testResources = new TestResources()
+    public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
     void enablesCustomizationsOnNewModel() {
@@ -101,7 +101,7 @@ idea {
     }
 
     @Test
-    void "plus minus configurations work fine for self resolving file dependencies"() {
+    void plusMinusConfigurationsWorkFineForSelfResolvingFileDependencies() {
         //when
         runTask 'idea', '''
 apply plugin: "java"
@@ -178,7 +178,7 @@ idea {
 
     @Issue("GRADLE-1504")
     @Test
-    void "should put sourceSet's output dir on classpath"() {
+    void shouldNotPutSourceSetsOutputDirOnClasspath() {
         testFile('build/generated/main/foo.resource').createFile()
         testFile('build/ws/test/service.xml').createFile()
 
@@ -201,14 +201,14 @@ sourceSets.test.output.dir "$buildDir/ws/test"
     }
 
     @Test
-    void "the 'buildBy' task be executed"() {
+    void theBuiltByTaskBeExecuted() {
         //when
         def result = runIdeaTask('''
 apply plugin: "java"
 apply plugin: "idea"
 
-sourceSets.main.output.dir "$buildDir/generated/main", buildBy: 'generateForMain'
-sourceSets.test.output.dir "$buildDir/generated/test", buildBy: 'generateForTest'
+sourceSets.main.output.dir "$buildDir/generated/main", builtBy: 'generateForMain'
+sourceSets.test.output.dir "$buildDir/generated/test", builtBy: 'generateForTest'
 
 task generateForMain << {}
 task generateForTest << {}
@@ -218,12 +218,13 @@ task generateForTest << {}
     }
 
     @Test
-    void "enables toggling javadoc and sources off"() {
+    void enablesTogglingJavadocAndSourcesOff() {
         //given
         def repoDir = file("repo")
-        publishArtifact(repoDir, "coolGroup", "niceArtifact")
-        publishArtifact(repoDir, "coolGroup", "niceArtifact", null, "sources")
-        publishArtifact(repoDir, "coolGroup", "niceArtifact", null, "javadoc")
+        def module = maven(repoDir).module("coolGroup", "niceArtifact")
+        module.artifact(classifier: 'sources')
+        module.artifact(classifier: 'javadoc')
+        module.publish()
 
         //when
         runIdeaTask """
@@ -251,10 +252,89 @@ idea.module {
     }
 
     @Test
-    void "does not break when dependency unresolved"() {
+    void "respects external dependencies order"() {
         //given
         def repoDir = file("repo")
-        publishArtifact(repoDir, "groupOne", "artifactTwo")
+        maven(repoDir).module("org.gradle", "artifact1").publish()
+        maven(repoDir).module("org.gradle", "artifact2").publish()
+
+        //when
+        runIdeaTask """
+apply plugin: 'java'
+apply plugin: 'idea'
+
+repositories {
+    maven { url "${repoDir.toURI()}" }
+}
+
+dependencies {
+    compile 'org.gradle:artifact1:1.0'
+    compile 'org.gradle:artifact2:1.0'
+}
+"""
+        def content = getFile([:], 'root.iml').text
+
+        //then
+        def a1 = content.indexOf("artifact1")
+        def a2 = content.indexOf("artifact2")
+
+        assert [a1, a2] == [a1, a2].sort()
+    }
+
+    @Test
+    void "respects local dependencies order"() {
+        //given
+        file('artifact1.jar').createNewFile()
+        file('artifact2.jar').createNewFile()
+
+        //when
+        runIdeaTask """
+apply plugin: 'java'
+apply plugin: 'idea'
+
+dependencies {
+    compile files('artifact1.jar')
+    compile files('artifact2.jar')
+}
+"""
+        def content = getFile([:], 'root.iml').text
+
+        //then
+        def a1 = content.indexOf("artifact1")
+        def a2 = content.indexOf("artifact2")
+
+        assert [a1, a2] == [a1, a2].sort()
+    }
+
+    @Test
+    void "works with artifacts without group and version"() {
+        //given
+        testFile('repo/hibernate-core.jar').createFile()
+
+        //when
+        runIdeaTask """
+apply plugin: 'java'
+apply plugin: 'idea'
+
+repositories {
+  flatDir dirs: 'repo'
+}
+
+dependencies {
+    compile ':hibernate-core:'
+}
+"""
+        def content = getFile([:], 'root.iml').text
+
+        //then
+        content.contains 'hibernate-core.jar'
+    }
+
+    @Test
+    void doesNotBreakWhenSomeDependenciesCannotBeResolved() {
+        //given
+        def repoDir = file("repo")
+        maven(repoDir).module("groupOne", "artifactTwo").publish()
 
         file("settings.gradle") << "include 'someApiProject', 'impl'\n"
         file('someDependency.jar').createFile()
@@ -285,7 +365,6 @@ project(':impl') {
         assert content.count("someDependency.jar") == 1
         assert content.count("artifactTwo-1.0.jar") == 1
         assert content.count("someApiProject") == 1
-        assert content.count("unresolved dependency - i.dont#Exist;1.0") == 1
-        //TODO SF might do similar test for eclipse
+        assert content.count("unresolved dependency - i.dont Exist 1.0") == 1
     }
 }

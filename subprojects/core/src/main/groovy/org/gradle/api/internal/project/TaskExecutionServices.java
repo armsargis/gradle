@@ -17,13 +17,18 @@ package org.gradle.api.internal.project;
 
 import org.gradle.StartParameter;
 import org.gradle.api.execution.TaskActionListener;
+import org.gradle.api.internal.DocumentationRegistry;
 import org.gradle.api.internal.changedetection.*;
 import org.gradle.api.internal.tasks.TaskExecuter;
 import org.gradle.api.internal.tasks.execution.*;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.CacheRepository;
+import org.gradle.execution.taskgraph.TaskPlanExecutor;
+import org.gradle.execution.taskgraph.TaskPlanExecutorFactory;
+import org.gradle.internal.id.RandomLongIdGenerator;
+import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.listener.ListenerManager;
-import org.gradle.util.RandomLongIdGenerator;
 
 public class TaskExecutionServices extends DefaultServiceRegistry {
     private final Gradle gradle;
@@ -40,23 +45,29 @@ public class TaskExecutionServices extends DefaultServiceRegistry {
                                 new SkipEmptySourceFilesTaskExecuter(
                                         new ValidatingTaskExecuter(
                                                 new SkipUpToDateTaskExecuter(
-                                                        new PostExecutionAnalysisTaskExecuter(
-                                                                new ExecuteActionsTaskExecuter(
-                                                                        get(ListenerManager.class).getBroadcaster(TaskActionListener.class))),
+                                                        new CacheLockHandlingTaskExecuter(
+                                                                new PostExecutionAnalysisTaskExecuter(
+                                                                        new ExecuteActionsTaskExecuter(
+                                                                                get(ListenerManager.class).getBroadcaster(TaskActionListener.class))),
+                                                                get(TaskArtifactStateCacheAccess.class)),
                                                         get(TaskArtifactStateRepository.class)))))));
     }
 
+    protected TaskArtifactStateCacheAccess createCacheAccess() {
+        return new DefaultTaskArtifactStateCacheAccess(gradle, get(CacheRepository.class));
+    }
+
     protected TaskArtifactStateRepository createTaskArtifactStateRepository() {
-        CacheRepository cacheRepository = get(CacheRepository.class);
+        TaskArtifactStateCacheAccess cacheAccess = get(TaskArtifactStateCacheAccess.class);
+
         FileSnapshotter fileSnapshotter = new DefaultFileSnapshotter(
                 new CachingHasher(
                         new DefaultHasher(),
-                        cacheRepository,
-                        gradle));
+                        cacheAccess));
 
-        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(fileSnapshotter, new RandomLongIdGenerator(), cacheRepository, gradle);
+        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(fileSnapshotter, new RandomLongIdGenerator(), cacheAccess);
 
-        TaskHistoryRepository taskHistoryRepository = new CacheBackedTaskHistoryRepository(cacheRepository, new CacheBackedFileSnapshotRepository(cacheRepository, gradle), gradle);
+        TaskHistoryRepository taskHistoryRepository = new CacheBackedTaskHistoryRepository(cacheAccess, new CacheBackedFileSnapshotRepository(cacheAccess));
 
         return new FileCacheBroadcastTaskArtifactStateRepository(
                 new ShortCircuitTaskArtifactStateRepository(
@@ -66,5 +77,11 @@ public class TaskExecutionServices extends DefaultServiceRegistry {
                                 fileSnapshotter,
                                 outputFilesSnapshotter)),
                 new DefaultFileCacheListener());
+    }
+
+    protected TaskPlanExecutor createTaskExecutorFactory() {
+        StartParameter startParameter = gradle.getStartParameter();
+        TaskArtifactStateCacheAccess cacheAccess = get(TaskArtifactStateCacheAccess.class);
+        return new TaskPlanExecutorFactory(cacheAccess, startParameter.getParallelThreadCount(), get(DocumentationRegistry.class)).create();
     }
 }

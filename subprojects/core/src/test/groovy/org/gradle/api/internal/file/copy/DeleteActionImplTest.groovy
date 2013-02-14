@@ -15,10 +15,9 @@
  */
 package org.gradle.api.internal.file.copy
 
-import org.gradle.api.internal.file.BaseDirConverter
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.util.TemporaryFolder
-import org.gradle.util.TestFile
+import org.gradle.api.internal.file.TestFiles
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
@@ -27,14 +26,11 @@ import spock.lang.Specification
  */
 class DeleteActionImplTest extends Specification {
     @Rule
-    TemporaryFolder tmpDir = new TemporaryFolder();
-
-    FileResolver fileResolver = new BaseDirConverter(tmpDir.getDir())
-    
-    DeleteActionImpl delete = new DeleteActionImpl(fileResolver);
+    TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
+    DeleteActionImpl delete = new DeleteActionImpl(TestFiles.resolver(tmpDir.testDirectory))
 
     def deletesDirectory() {
-        TestFile dir = tmpDir.getDir();
+        TestFile dir = tmpDir.getTestDirectory();
         dir.file("somefile").createFile();
 
         when:
@@ -46,7 +42,7 @@ class DeleteActionImplTest extends Specification {
     }
 
     def deletesFile() {
-        TestFile dir = tmpDir.getDir();
+        TestFile dir = tmpDir.getTestDirectory();
         TestFile file = dir.file("somefile");
         file.createFile();
 
@@ -59,7 +55,7 @@ class DeleteActionImplTest extends Specification {
     }
 
     def deletesFileByPath() {
-        TestFile dir = tmpDir.getDir();
+        TestFile dir = tmpDir.getTestDirectory();
         TestFile file = dir.file("somefile");
         file.createFile();
 
@@ -72,8 +68,8 @@ class DeleteActionImplTest extends Specification {
     }
 
     def deletesMultipleTargets() {
-        TestFile file = tmpDir.getDir().file("somefile").createFile();
-        TestFile dir = tmpDir.getDir().file("somedir").createDir();
+        TestFile file = tmpDir.getTestDirectory().file("somefile").createFile();
+        TestFile dir = tmpDir.getTestDirectory().file("somedir").createDir();
         dir.file("sub/child").createFile();
 
         when:

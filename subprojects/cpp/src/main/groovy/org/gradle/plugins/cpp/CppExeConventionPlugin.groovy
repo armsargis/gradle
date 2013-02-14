@@ -19,11 +19,12 @@ import org.gradle.api.Project
 import org.gradle.api.Plugin
 
 import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
+import org.gradle.api.internal.plugins.DefaultArtifactPublicationSet
 
 class CppExeConventionPlugin implements Plugin<Project> {
 
     void apply(Project project) {
-        project.apply(plugin: "cpp")
+        project.plugins.apply(CppPlugin)
         
         project.with {
             cpp {
@@ -33,7 +34,8 @@ class CppExeConventionPlugin implements Plugin<Project> {
             }
             executables {
                 main {
-                    sourceSets << cpp.sourceSets.main
+                    spec.baseName = project.name
+                    sourceSets << project.cpp.sourceSets.main
                 }
             }
             
@@ -46,12 +48,10 @@ class CppExeConventionPlugin implements Plugin<Project> {
 
                 // needs to be more general and not peer into the spec
                 executables.main.spec.outputFile,
-                executables.main.spec.task
+                executables.main
             )
 
-            artifacts {
-                archives exeArtifact
-            }
+            extensions.getByType(DefaultArtifactPublicationSet).addCandidate(exeArtifact)
         }
     }
 

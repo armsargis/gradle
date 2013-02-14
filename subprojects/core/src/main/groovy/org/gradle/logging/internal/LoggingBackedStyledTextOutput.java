@@ -18,8 +18,8 @@ package org.gradle.logging.internal;
 import org.gradle.api.Action;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.logging.LogLevel;
+import org.gradle.internal.TimeProvider;
 import org.gradle.util.LineBufferingOutputStream;
-import org.gradle.util.TimeProvider;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -36,7 +36,7 @@ public class LoggingBackedStyledTextOutput extends AbstractStyledTextOutput {
     private boolean styleChange;
 
     public LoggingBackedStyledTextOutput(OutputEventListener listener, String category, LogLevel logLevel, TimeProvider timeProvider) {
-        outstr = new LineBufferingOutputStream(new LogAction(listener, category, logLevel, timeProvider), true);
+        outstr = new LineBufferingOutputStream(new LogAction(listener, category, logLevel, timeProvider));
     }
 
     protected void doStyleChange(Style style) {

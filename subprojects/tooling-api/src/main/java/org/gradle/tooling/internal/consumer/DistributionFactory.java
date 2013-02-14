@@ -15,38 +15,39 @@
  */
 package org.gradle.tooling.internal.consumer;
 
-import org.gradle.api.internal.DefaultClassPathProvider;
+import org.gradle.api.internal.classpath.EffectiveClassPath;
+import org.gradle.initialization.layout.BuildLayout;
+import org.gradle.initialization.layout.BuildLayoutFactory;
+import org.gradle.internal.classpath.ClassPath;
+import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.logging.ProgressLogger;
 import org.gradle.logging.ProgressLoggerFactory;
 import org.gradle.tooling.GradleConnectionException;
 import org.gradle.util.DistributionLocator;
 import org.gradle.util.GradleVersion;
-import org.gradle.util.UncheckedException;
 import org.gradle.wrapper.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class DistributionFactory {
     private final File userHomeDir;
-    private final ProgressLoggerFactory progressLoggerFactory;
 
-    public DistributionFactory(File userHomeDir, ProgressLoggerFactory progressLoggerFactory) {
+    public DistributionFactory(File userHomeDir) {
         this.userHomeDir = userHomeDir;
-        this.progressLoggerFactory = progressLoggerFactory;
     }
 
     /**
      * Returns the default distribution to use for the specified project.
      */
-    public Distribution getDefaultDistribution(File projectDir) {
-        WrapperExecutor wrapper = WrapperExecutor.forProjectDirectory(projectDir, System.out);
+    public Distribution getDefaultDistribution(File projectDir, boolean searchUpwards) {
+        BuildLayout layout = new BuildLayoutFactory().getLayoutFor(projectDir, searchUpwards);
+        WrapperExecutor wrapper = WrapperExecutor.forProjectDirectory(layout.getRootDirectory(), System.out);
         if (wrapper.getDistribution() != null) {
-            return getDistribution(wrapper.getDistribution());
+            return new ZippedDistribution(wrapper.getConfiguration());
         }
         return getDownloadedDistribution(GradleVersion.current().getVersion());
     }
@@ -55,7 +56,8 @@ public class DistributionFactory {
      * Returns the distribution installed in the specified directory.
      */
     public Distribution getDistribution(File gradleHomeDir) {
-        return new InstalledDistribution(gradleHomeDir, String.format("Gradle installation '%s'", gradleHomeDir), String.format("Gradle installation directory '%s'", gradleHomeDir));
+        return new InstalledDistribution(gradleHomeDir, String.format("Gradle installation '%s'", gradleHomeDir),
+                String.format("Gradle installation directory '%s'", gradleHomeDir));
     }
 
     /**
@@ -69,7 +71,9 @@ public class DistributionFactory {
      * Returns the distribution at the given URI.
      */
     public Distribution getDistribution(URI gradleDistribution) {
-        return new ZippedDistribution(gradleDistribution);
+        WrapperConfiguration configuration = new WrapperConfiguration();
+        configuration.setDistribution(gradleDistribution);
+        return new ZippedDistribution(configuration);
     }
 
     /**
@@ -80,41 +84,36 @@ public class DistributionFactory {
     }
 
     private Distribution getDownloadedDistribution(String gradleVersion) {
-        URI distUri;
-        try {
-            distUri = new URI(new DistributionLocator().getDistributionFor(GradleVersion.version(gradleVersion)));
-        } catch (URISyntaxException e) {
-            throw UncheckedException.asUncheckedException(e);
-        }
+        URI distUri = new DistributionLocator().getDistributionFor(GradleVersion.version(gradleVersion));
         return getDistribution(distUri);
     }
 
     private class ZippedDistribution implements Distribution {
-        private final URI gradleDistribution;
         private InstalledDistribution installedDistribution;
+        private final WrapperConfiguration wrapperConfiguration;
 
-        private ZippedDistribution(URI gradleDistribution) {
-            this.gradleDistribution = gradleDistribution;
+        private ZippedDistribution(WrapperConfiguration wrapperConfiguration) {
+            this.wrapperConfiguration = wrapperConfiguration;
         }
 
         public String getDisplayName() {
-            return String.format("Gradle distribution '%s'", gradleDistribution);
+            return String.format("Gradle distribution '%s'", wrapperConfiguration.getDistribution());
         }
 
-        public Set<File> getToolingImplementationClasspath() {
+        public ClassPath getToolingImplementationClasspath(ProgressLoggerFactory progressLoggerFactory) {
             if (installedDistribution == null) {
                 File installDir;
                 try {
-                    Install install = new Install(false, false, new ProgressReportingDownload(progressLoggerFactory), new PathAssembler(userHomeDir));
-                    installDir = install.createDist(gradleDistribution);
+                    Install install = new Install(new ProgressReportingDownload(progressLoggerFactory), new PathAssembler(userHomeDir));
+                    installDir = install.createDist(wrapperConfiguration);
                 } catch (FileNotFoundException e) {
                     throw new IllegalArgumentException(String.format("The specified %s does not exist.", getDisplayName()), e);
                 } catch (Exception e) {
-                    throw new GradleConnectionException(String.format("Could not install Gradle distribution from '%s'.", gradleDistribution), e);
+                    throw new GradleConnectionException(String.format("Could not install Gradle distribution from '%s'.", wrapperConfiguration.getDistribution()), e);
                 }
                 installedDistribution = new InstalledDistribution(installDir, getDisplayName(), getDisplayName());
             }
-            return installedDistribution.getToolingImplementationClasspath();
+            return installedDistribution.getToolingImplementationClasspath(progressLoggerFactory);
         }
     }
 
@@ -130,7 +129,7 @@ public class DistributionFactory {
             progressLogger.setDescription(String.format("Download %s", address));
             progressLogger.started();
             try {
-                new Download().download(address, destination);
+                new Download("Gradle Tooling API", GradleVersion.current().getVersion()).download(address, destination);
             } finally {
                 progressLogger.completed();
             }
@@ -152,7 +151,18 @@ public class DistributionFactory {
             return displayName;
         }
 
-        public Set<File> getToolingImplementationClasspath() {
+        public ClassPath getToolingImplementationClasspath(ProgressLoggerFactory progressLoggerFactory) {
+            ProgressLogger progressLogger = progressLoggerFactory.newOperation(DistributionFactory.class);
+            progressLogger.setDescription("Validate distribution");
+            progressLogger.started();
+            try {
+                return getToolingImpl();
+            } finally {
+                progressLogger.completed();
+            }
+        }
+
+        private ClassPath getToolingImpl() {
             if (!gradleHomeDir.exists()) {
                 throw new IllegalArgumentException(String.format("The specified %s does not exist.", locationDisplayName));
             }
@@ -169,7 +179,7 @@ public class DistributionFactory {
                     files.add(file);
                 }
             }
-            return files;
+            return new DefaultClassPath(files);
         }
     }
 
@@ -178,9 +188,8 @@ public class DistributionFactory {
             return "Gradle classpath distribution";
         }
 
-        public Set<File> getToolingImplementationClasspath() {
-            DefaultClassPathProvider provider = new DefaultClassPathProvider();
-            return provider.findClassPath("GRADLE_RUNTIME");
+        public ClassPath getToolingImplementationClasspath(ProgressLoggerFactory progressLoggerFactory) {
+            return new EffectiveClassPath(getClass().getClassLoader());
         }
     }
 }

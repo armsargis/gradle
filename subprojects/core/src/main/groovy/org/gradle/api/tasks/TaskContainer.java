@@ -76,12 +76,12 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * <p>After the task is added, it is made available as a property of the project, so that you can reference the task
      * by name in your build file.  See <a href="../Project.html#properties">here</a> for more details.</p>
      *
-     * <p>If a task with the given name already exists in this container and the <code>override</code> option is not set
+     * <p>If a task with the given name already exists in this container and the <code>overwrite</code> option is not set
      * to true, an exception is thrown.</p>
      *
      * @param options The task creation options.
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     Task add(Map<String, ?> options) throws InvalidUserDataException;
 
@@ -96,7 +96,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @param options The task creation options.
      * @param configureClosure The closure to use to configure the task.
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     Task add(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException;
 
@@ -110,7 +110,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @param name The name of the task to be created
      * @param configureClosure The closure to use to configure the task.
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     Task add(String name, Closure configureClosure) throws InvalidUserDataException;
 
@@ -122,7 +122,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      *
      * @param name The name of the task to be created
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     Task add(String name) throws InvalidUserDataException;
 
@@ -135,7 +135,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @param name The name of the task to be created.
      * @param type The type of task to create.
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     <T extends Task> T add(String name, Class<T> type) throws InvalidUserDataException;
 
@@ -148,7 +148,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      *
      * @param name The name of the task to be created
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     Task replace(String name);
 
@@ -162,7 +162,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @param name The name of the task to be created.
      * @param type The type of task to create.
      * @return The newly created task object
-     * @throws InvalidUserDataException If a task with the given name already exsists in this project.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
     <T extends Task> T replace(String name, Class<T> type);
 }

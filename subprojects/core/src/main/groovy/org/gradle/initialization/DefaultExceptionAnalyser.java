@@ -16,12 +16,12 @@
 package org.gradle.initialization;
 
 import org.gradle.api.GradleScriptException;
-import org.gradle.api.LocationAwareException;
-import org.gradle.api.ScriptCompilationException;
 import org.gradle.api.internal.Contextual;
 import org.gradle.api.internal.ExceptionAnalyser;
+import org.gradle.api.internal.LocationAwareException;
 import org.gradle.api.tasks.TaskExecutionException;
 import org.gradle.groovy.scripts.Script;
+import org.gradle.groovy.scripts.ScriptCompilationException;
 import org.gradle.groovy.scripts.ScriptExecutionListener;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.listener.ListenerManager;
@@ -46,7 +46,7 @@ public class DefaultExceptionAnalyser implements ExceptionAnalyser, ScriptExecut
     }
 
     public Throwable transform(Throwable exception) {
-        Throwable actualException = findDeepest(exception);
+        Throwable actualException = findDeepestRootException(exception);
         if (actualException == null) {
             return exception;
         }
@@ -85,7 +85,8 @@ public class DefaultExceptionAnalyser implements ExceptionAnalyser, ScriptExecut
         return new LocationAwareException(actualException, target, source, lineNumber);
     }
 
-    private Throwable findDeepest(Throwable exception) {
+    private Throwable findDeepestRootException(Throwable exception) {
+        // TODO: fix the way we work out which exception is important: TaskExecutionException is not always the most helpful
         Throwable locationAware = null;
         Throwable result = null;
         Throwable contextMatch = null;
@@ -94,7 +95,7 @@ public class DefaultExceptionAnalyser implements ExceptionAnalyser, ScriptExecut
                 locationAware = current;
             } else if (current instanceof GradleScriptException || current instanceof TaskExecutionException) {
                 result = current;
-            } else if (current.getClass().getAnnotation(Contextual.class) != null) {
+            } else if (contextMatch == null && current.getClass().getAnnotation(Contextual.class) != null) {
                 contextMatch = current;
             }
         }

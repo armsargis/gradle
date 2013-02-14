@@ -19,18 +19,18 @@ package org.gradle.api.plugins.antlr;
 import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.internal.DynamicObjectAware;
-import org.gradle.api.internal.IConventionAware;
+import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.DefaultSourceSet;
-import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginConvention;
 import org.gradle.api.plugins.antlr.internal.AntlrSourceVirtualDirectoryImpl;
-import org.gradle.api.tasks.ConventionValue;
 import org.gradle.api.tasks.SourceSet;
 
+import javax.inject.Inject;
 import java.io.File;
+import java.util.concurrent.Callable;
 
 import static org.gradle.api.plugins.JavaPlugin.COMPILE_CONFIGURATION_NAME;
 
@@ -41,6 +41,12 @@ import static org.gradle.api.plugins.JavaPlugin.COMPILE_CONFIGURATION_NAME;
  */
 public class AntlrPlugin implements Plugin<ProjectInternal> {
     public static final String ANTLR_CONFIGURATION_NAME = "antlr";
+    private final FileResolver fileResolver;
+
+    @Inject
+    public AntlrPlugin(FileResolver fileResolver) {
+        this.fileResolver = fileResolver;
+    }
 
     public void apply(final ProjectInternal project) {
         project.getPlugins().apply(JavaPlugin.class);
@@ -57,8 +63,8 @@ public class AntlrPlugin implements Plugin<ProjectInternal> {
                         // for each source set we will:
                         // 1) Add a new 'antlr' virtual directory mapping
                         final AntlrSourceVirtualDirectoryImpl antlrDirectoryDelegate
-                                = new AntlrSourceVirtualDirectoryImpl(((DefaultSourceSet) sourceSet).getDisplayName(), project.getFileResolver());
-                        ((DynamicObjectAware) sourceSet).getConvention().getPlugins().put(
+                                = new AntlrSourceVirtualDirectoryImpl(((DefaultSourceSet) sourceSet).getDisplayName(), fileResolver);
+                        new DslObject(sourceSet).getConvention().getPlugins().put(
                                 AntlrSourceVirtualDirectory.NAME, antlrDirectoryDelegate);
                         final String srcDir = String.format("src/%s/antlr", sourceSet.getName());
                         antlrDirectoryDelegate.getAntlr().srcDir(srcDir);
@@ -72,15 +78,11 @@ public class AntlrPlugin implements Plugin<ProjectInternal> {
                                 sourceSet.getName()));
 
                         // 3) set up convention mapping for default sources (allows user to not have to specify)
-                        antlrTask.conventionMapping("defaultSource", new ConventionValue() {
-                            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
-                                return antlrDirectoryDelegate.getAntlr();
-                            }
-                        });
+                        antlrTask.setSource(antlrDirectoryDelegate.getAntlr());
 
                         // 4) set up convention mapping for handling the 'antlr' dependency configuration
-                        antlrTask.getConventionMapping().map("antlrClasspath", new ConventionValue() {
-                            public Object getValue(Convention convention, IConventionAware conventionAwareObject) {
+                        antlrTask.getConventionMapping().map("antlrClasspath", new Callable<Object>() {
+                            public Object call() throws Exception {
                                 return project.getConfigurations().getByName(ANTLR_CONFIGURATION_NAME).copy()
                                         .setTransitive(true);
                             }

@@ -17,13 +17,17 @@
 package org.gradle.api.internal.resource;
 
 import org.apache.commons.io.IOUtils;
+import org.gradle.internal.SystemProperties;
+import org.gradle.util.GradleVersion;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLConnection;
 
-import static org.gradle.util.GFileUtils.*;
+import static org.gradle.util.GFileUtils.canonicalise;
 
 public class UriResource implements Resource {
     private final File sourceFile;
@@ -51,14 +55,14 @@ public class UriResource implements Resource {
             throw new ResourceException(String.format("Could not read %s as it is a directory.", getDisplayName()));
         }
         try {
-            InputStream inputStream = sourceUri.toURL().openStream();
+            InputStream inputStream = getInputStream(sourceUri);
             try {
                 return IOUtils.toString(inputStream);
             } finally {
                 inputStream.close();
             }
         } catch (FileNotFoundException e) {
-            throw new ResourceNotFoundException(String.format(String.format("Could not read %s as it does not exist.", getDisplayName())));
+            throw new ResourceNotFoundException(String.format("Could not read %s as it does not exist.", getDisplayName()));
         } catch (Exception e) {
             throw new ResourceException(String.format("Could not read %s.", getDisplayName()), e);
         }
@@ -66,7 +70,7 @@ public class UriResource implements Resource {
 
     public boolean getExists() {
         try {
-            InputStream inputStream = sourceUri.toURL().openStream();
+            InputStream inputStream = getInputStream(sourceUri);
             try {
                 return true;
             } finally {
@@ -79,6 +83,12 @@ public class UriResource implements Resource {
         }
     }
 
+    private InputStream getInputStream(URI url) throws IOException {
+        final URLConnection urlConnection = url.toURL().openConnection();
+        urlConnection.setRequestProperty("User-Agent", getUserAgentString());
+        return urlConnection.getInputStream();
+    }
+
     public File getFile() {
         return sourceFile;
     }
@@ -86,4 +96,22 @@ public class UriResource implements Resource {
     public URI getURI() {
         return sourceUri;
     }
+
+    public static String getUserAgentString() {
+        String osName = System.getProperty("os.name");
+        String osVersion = System.getProperty("os.version");
+        String osArch = System.getProperty("os.arch");
+        String javaVendor = System.getProperty("java.vendor");
+        String javaVersion = SystemProperties.getJavaVersion();
+        String javaVendorVersion = System.getProperty("java.vm.version");
+        return String.format("Gradle/%s (%s;%s;%s) (%s;%s;%s)",
+                GradleVersion.current().getVersion(),
+                osName,
+                osVersion,
+                osArch,
+                javaVendor,
+                javaVersion,
+                javaVendorVersion);
+    }
+
 }

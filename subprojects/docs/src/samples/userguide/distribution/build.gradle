@@ -1,0 +1,25 @@
+// START SNIPPET use-plugin
+apply plugin: 'distribution'
+// END SNIPPET use-plugin
+
+version = '1.0.0'
+
+// START SNIPPET name-conf
+distributions {
+    main {
+        baseName = 'my-name'
+    }
+}
+// END SNIPPET name-conf
+
+// START SNIPPET custom-distZip
+apply plugin: 'distribution'
+
+distributions {
+    custom
+}
+
+customDistZip {
+    from "custom/custom.txt"
+}
+// END SNIPPET custom-distZip

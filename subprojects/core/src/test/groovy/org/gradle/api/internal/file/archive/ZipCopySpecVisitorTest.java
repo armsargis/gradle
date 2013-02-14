@@ -19,75 +19,106 @@ import org.apache.commons.io.IOUtils;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.RelativePath;
+import org.gradle.api.internal.file.archive.compression.ArchiveOutputStreamFactory;
 import org.gradle.api.internal.file.copy.ArchiveCopyAction;
+import org.gradle.api.internal.file.copy.ZipDeflatedCompressor;
 import org.gradle.api.internal.file.copy.ReadableCopySpec;
-import org.gradle.util.TestFile;
-import org.gradle.util.TemporaryFolder;
+import org.gradle.api.internal.file.copy.ZipStoredCompressor;
+import org.gradle.test.fixtures.file.TestFile;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.hamcrest.Description;
-import static org.hamcrest.Matchers.*;
 import org.jmock.Expectations;
 import org.jmock.api.Action;
 import org.jmock.api.Invocation;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
-import static org.junit.Assert.*;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.Before;
 import org.junit.runner.RunWith;
 
 import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.gradle.api.file.FileVisitorUtil.assertVisitsPermissions;
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 
 @RunWith(JMock.class)
 public class ZipCopySpecVisitorTest {
     @Rule
-    public final TemporaryFolder tmpDir = new TemporaryFolder();
+    public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private final JUnit4Mockery context = new JUnit4Mockery();
-    private final ArchiveCopyAction copyAction = context.mock(ArchiveCopyAction.class);
+    private final ArchiveCopyAction copyAction = context.mock(ZipCopyAction.class);
     private final ReadableCopySpec copySpec = context.mock(ReadableCopySpec.class);
     private final ZipCopySpecVisitor visitor = new ZipCopySpecVisitor();
+    private TestFile zipFile;
 
     @Before
-    public void setUp() {
-        context.checking(new Expectations(){{
-            allowing(copySpec).getFileMode();
-            will(returnValue(1));
-            allowing(copySpec).getDirMode();
-            will(returnValue(2));
+    public void setup() {
+        zipFile = tmpDir.getTestDirectory().file("test.zip");
+        context.checking(new Expectations() {{
+            allowing(copyAction).getArchivePath();
+            will(returnValue(zipFile));
         }});
+        context.checking(new Expectations() {{
+            allowing(copyAction).getCompressor();
+            will(returnValue(ZipStoredCompressor.INSTANCE));
+        }});
+    }
+
+    private TestFile initializeZipFile(final TestFile testFile, final ArchiveOutputStreamFactory compressor) {
+        context.checking(new Expectations() {{
+            allowing(copyAction).getArchivePath();
+            will(returnValue(zipFile));
+            allowing(copyAction).getCompressor();
+            will(returnValue(compressor));
+        }});
+        return testFile;
     }
 
     @Test
     public void createsZipFile() {
-        final TestFile zipFile = tmpDir.getDir().file("test.zip");
+        initializeZipFile(zipFile, ZipStoredCompressor.INSTANCE);
+        zip(dir("dir"), file("dir/file1"), file("file2"));
 
-        context.checking(new Expectations(){{
-            allowing(copyAction).getArchivePath();
-            will(returnValue(zipFile));
-        }});
-
-        visitor.startVisit(copyAction);
-        visitor.visitSpec(copySpec);
-
-        visitor.visitDir(dir("dir"));
-        visitor.visitFile(file("dir/file1"));
-        visitor.visitFile(file("file2"));
-
-        visitor.endVisit();
-
-        TestFile expandDir = tmpDir.getDir().file("expanded");
+        TestFile expandDir = tmpDir.getTestDirectory().file("expanded");
         zipFile.unzipTo(expandDir);
         expandDir.file("dir/file1").assertContents(equalTo("contents of dir/file1"));
         expandDir.file("file2").assertContents(equalTo("contents of file2"));
     }
 
     @Test
-    public void wrapsFailureToOpenOutputFile() {
-        final TestFile zipFile = tmpDir.createDir("test.zip");
+    public void createsDeflatedZipFile() {
+        initializeZipFile(zipFile, ZipDeflatedCompressor.INSTANCE);
+        zip(dir("dir"), file("dir/file1"), file("file2"));
 
-        context.checking(new Expectations(){{
+        TestFile expandDir = tmpDir.getTestDirectory().file("expanded");
+        zipFile.unzipTo(expandDir);
+        expandDir.file("dir/file1").assertContents(equalTo("contents of dir/file1"));
+        expandDir.file("file2").assertContents(equalTo("contents of file2"));
+    }
+
+    @Test
+    public void zipFileContainsExpectedPermissions() {
+        zip(dir("dir"), file("file"));
+
+        Map<String, Integer> expected = new HashMap<String, Integer>();
+        expected.put("dir", 2);
+        expected.put("file", 1);
+
+        assertVisitsPermissions(new ZipFileTree(zipFile, null), expected);
+    }
+
+    @Test
+    public void wrapsFailureToOpenOutputFile() {
+        final TestFile invalidZipFile = tmpDir.createDir("test.zip");
+
+        context.checking(new Expectations() {{
             allowing(copyAction).getArchivePath();
-            will(returnValue(zipFile));
+            will(returnValue(invalidZipFile));
         }});
 
         try {
@@ -100,13 +131,6 @@ public class ZipCopySpecVisitorTest {
 
     @Test
     public void wrapsFailureToAddElement() {
-        final TestFile zipFile = tmpDir.getDir().file("test.zip");
-
-        context.checking(new Expectations(){{
-            allowing(copyAction).getArchivePath();
-            will(returnValue(zipFile));
-        }});
-
         visitor.startVisit(copyAction);
         visitor.visitSpec(copySpec);
 
@@ -120,6 +144,21 @@ public class ZipCopySpecVisitorTest {
         }
     }
 
+    private void zip(FileVisitDetails... files) {
+        visitor.startVisit(copyAction);
+        visitor.visitSpec(copySpec);
+
+        for (FileVisitDetails f : files) {
+            if (f.isDirectory()) {
+                visitor.visitDir(f);
+            } else {
+                visitor.visitFile(f);
+            }
+        }
+
+        visitor.endVisit();
+    }
+
     private FileVisitDetails file(final String path) {
         final FileVisitDetails details = context.mock(FileVisitDetails.class, path);
 
@@ -129,6 +168,12 @@ public class ZipCopySpecVisitorTest {
 
             allowing(details).getLastModified();
             will(returnValue(1000L));
+
+            allowing(details).isDirectory();
+            will(returnValue(false));
+
+            allowing(details).getMode();
+            will(returnValue(1));
 
             allowing(details).copyTo(with(notNullValue(OutputStream.class)));
             will(new Action() {
@@ -155,6 +200,12 @@ public class ZipCopySpecVisitorTest {
 
             allowing(details).getLastModified();
             will(returnValue(1000L));
+
+            allowing(details).isDirectory();
+            will(returnValue(true));
+
+            allowing(details).getMode();
+            will(returnValue(2));
         }});
 
         return details;
@@ -169,6 +220,12 @@ public class ZipCopySpecVisitorTest {
 
             allowing(details).getLastModified();
             will(returnValue(1000L));
+
+            allowing(details).isDirectory();
+            will(returnValue(false));
+
+            allowing(details).getMode();
+            will(returnValue(1));
 
             allowing(details).copyTo(with(notNullValue(OutputStream.class)));
             will(new Action() {

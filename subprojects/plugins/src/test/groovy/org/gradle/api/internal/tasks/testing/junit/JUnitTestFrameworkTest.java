@@ -17,14 +17,17 @@
 package org.gradle.api.internal.tasks.testing.junit;
 
 import org.gradle.api.AntBuilder;
-import org.gradle.api.internal.project.ServiceRegistry;
 import org.gradle.api.internal.tasks.testing.AbstractTestFrameworkTest;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
-import org.gradle.api.internal.tasks.testing.junit.report.TestReporter;
 import org.gradle.api.tasks.testing.junit.JUnitOptions;
-import org.gradle.util.IdGenerator;
+import org.gradle.internal.Factory;
+import org.gradle.internal.id.IdGenerator;
+import org.gradle.internal.service.ServiceRegistry;
+import org.gradle.messaging.actor.ActorFactory;
 import org.jmock.Expectations;
 import org.junit.Before;
+
+import java.io.File;
 
 import static junit.framework.Assert.assertNotNull;
 import static org.hamcrest.Matchers.instanceOf;
@@ -35,7 +38,6 @@ import static org.junit.Assert.assertThat;
  */
 public class JUnitTestFrameworkTest extends AbstractTestFrameworkTest {
     private JUnitTestFramework jUnitTestFramework;
-    private TestReporter reporterMock;
     private JUnitOptions jUnitOptionsMock;
     private IdGenerator<?> idGenerator;
     private ServiceRegistry serviceRegistry;
@@ -44,15 +46,23 @@ public class JUnitTestFrameworkTest extends AbstractTestFrameworkTest {
     public void setUp() throws Exception {
         super.setUp();
 
-        reporterMock = context.mock(TestReporter.class);
         jUnitOptionsMock = context.mock(JUnitOptions.class);
         idGenerator = context.mock(IdGenerator.class);
         serviceRegistry = context.mock(ServiceRegistry.class);
-
-        context.checking(new Expectations(){{
-            allowing(testMock).getTestClassesDir(); will(returnValue(testClassesDir));
-            allowing(testMock).getClasspath(); will(returnValue(classpathMock));
-            allowing(testMock).getAnt(); will(returnValue(context.mock(AntBuilder.class)));
+        final Factory<File> temporaryDirFactory = new Factory<File>() {
+            public File create() {
+                return temporaryDir;
+            }
+        };
+        context.checking(new Expectations() {{
+            allowing(testMock).getTestClassesDir();
+            will(returnValue(testClassesDir));
+            allowing(testMock).getClasspath();
+            will(returnValue(classpathMock));
+            allowing(testMock).getAnt();
+            will(returnValue(context.mock(AntBuilder.class)));
+            allowing(testMock).getTemporaryDirFactory();
+            will(returnValue(temporaryDirFactory));
         }});
     }
 
@@ -62,54 +72,28 @@ public class JUnitTestFrameworkTest extends AbstractTestFrameworkTest {
         setMocks();
 
         assertNotNull(jUnitTestFramework.getOptions());
-        assertNotNull(jUnitTestFramework.getReporter());
     }
 
     @org.junit.Test
     public void testCreatesTestProcessor() {
         jUnitTestFramework = new JUnitTestFramework(testMock);
         setMocks();
+        final ActorFactory actorFactory = context.mock(ActorFactory.class);
 
         context.checking(new Expectations() {{
-            one(testMock).getTestResultsDir(); will(returnValue(testResultsDir));
-            one(serviceRegistry).get(IdGenerator.class); will(returnValue(idGenerator));
+            one(testMock).getTestResultsDir();
+            will(returnValue(testResultsDir));
+            one(serviceRegistry).get(IdGenerator.class);
+            will(returnValue(idGenerator));
+            one(serviceRegistry).get(ActorFactory.class);
+            will(returnValue(actorFactory));
         }});
 
         TestClassProcessor testClassProcessor = jUnitTestFramework.getProcessorFactory().create(serviceRegistry);
         assertThat(testClassProcessor, instanceOf(JUnitTestClassProcessor.class));
     }
 
-    @org.junit.Test
-    public void testReport() {
-        jUnitTestFramework = new JUnitTestFramework(testMock);
-        setMocks();
-
-        context.checking(new Expectations() {{
-            one(testMock).getTestResultsDir(); will(returnValue(testResultsDir));
-            one(testMock).getTestReportDir(); will(returnValue(testReportDir));
-            one(testMock).isTestReport(); will(returnValue(true));
-            one(reporterMock).setTestReportDir(testReportDir);
-            one(reporterMock).setTestResultsDir(testResultsDir);
-            one(reporterMock).generateReport();
-        }});
-
-        jUnitTestFramework.report();
-    }
-
-    @org.junit.Test
-    public void testReportWithDisabledReport() {
-        jUnitTestFramework = new JUnitTestFramework(testMock);
-        setMocks();
-
-        context.checking(new Expectations() {{
-            one(testMock).isTestReport(); will(returnValue(false));
-        }});
-
-        jUnitTestFramework.report();
-    }
-
     private void setMocks() {
-        jUnitTestFramework.setReporter(reporterMock);
         jUnitTestFramework.setOptions(jUnitOptionsMock);
     }
 }

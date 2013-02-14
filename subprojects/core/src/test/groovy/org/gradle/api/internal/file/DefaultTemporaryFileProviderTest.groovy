@@ -13,28 +13,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.gradle.api.internal.file
 
-import org.gradle.util.JUnit4GroovyMockery
-import org.gradle.util.TemporaryFolder
-import org.jmock.integration.junit4.JMock
+import org.gradle.internal.Factory
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
-import org.junit.Test
-import org.junit.runner.RunWith
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
+import spock.lang.Specification
 
-@RunWith(JMock.class)
-public class DefaultTemporaryFileProviderTest {
-    private final JUnit4GroovyMockery context = new JUnit4GroovyMockery()
-    @Rule
-    public final TemporaryFolder tmpDir = new TemporaryFolder()
+class DefaultTemporaryFileProviderTest extends Specification {
+    @Rule TestNameTestDirectoryProvider tmpDir
+    DefaultTemporaryFileProvider provider
 
-    @Test
-    public void allocatesTempFile() {
-        DefaultTemporaryFileProvider provider = new DefaultTemporaryFileProvider({tmpDir.getDir()} as FileSource)
-        assertThat(provider.newTemporaryFile('a', 'b'), equalTo(tmpDir.file('a', 'b')))
+    def setup() {
+        provider = new DefaultTemporaryFileProvider({tmpDir.testDirectory} as Factory)
+    }
+
+    def "allocates temp file"() {
+        expect:
+        provider.newTemporaryFile('a', 'b') == tmpDir.file('a', 'b')
+    }
+
+    def "can create temp file"() {
+        when:
+        def file = provider.createTemporaryFile("prefix", "suffix", "foo/bar")
+
+        then:
+        correctTempFileCreated(file)
+    }
+
+    def "can create multiple temp files with same arguments"() {
+        when:
+        def file1 = provider.createTemporaryFile("prefix", "suffix", "foo/bar")
+        def file2 = provider.createTemporaryFile("prefix", "suffix", "foo/bar")
+        def file3 = provider.createTemporaryFile("prefix", "suffix", "foo/bar")
+
+        then:
+        correctTempFileCreated(file1)
+        correctTempFileCreated(file2)
+        correctTempFileCreated(file2)
+        file1 != file2
+        file2 != file3
+    }
+
+    void correctTempFileCreated(File file) {
+        assert file.exists()
+        assert file.name.startsWith("prefix")
+        assert file.name.endsWith("suffix")
+        assert file.path.startsWith(new File(tmpDir.testDirectory, "foo/bar").path)
     }
 }

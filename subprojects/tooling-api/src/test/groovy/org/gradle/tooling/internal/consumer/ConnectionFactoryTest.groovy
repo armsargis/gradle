@@ -15,19 +15,22 @@
  */
 package org.gradle.tooling.internal.consumer
 
-import org.gradle.tooling.internal.protocol.ConnectionVersion4
-import spock.lang.Specification
 import org.gradle.listener.ListenerManager
 import org.gradle.logging.ProgressLoggerFactory
+import org.gradle.tooling.internal.consumer.async.DefaultAsyncConnection
+import org.gradle.tooling.internal.consumer.connection.LazyConnection
+import org.gradle.tooling.internal.consumer.connection.LoggingInitializerConnection
+import org.gradle.tooling.internal.consumer.connection.ProgressLoggingConnection
+import org.gradle.tooling.internal.consumer.loader.ToolingImplementationLoader
+import spock.lang.Specification
 
 class ConnectionFactoryTest extends Specification {
     final ToolingImplementationLoader implementationLoader = Mock()
     final ListenerManager listenerManager = Mock()
     final ProgressLoggerFactory progressLoggerFactory = Mock()
     final Distribution distribution = Mock()
-    final ConnectionVersion4 connectionImpl = Mock()
-    final ConnectionParameters parameters = Mock()
-    final ConnectionFactory factory = new ConnectionFactory(implementationLoader, listenerManager, progressLoggerFactory)
+    final ConnectionParameters parameters = new DefaultConnectionParameters()
+    final ConnectionFactory factory = new ConnectionFactory(implementationLoader)
 
     def usesImplementationLoaderToLoadConnectionFactory() {
         when:
@@ -36,8 +39,9 @@ class ConnectionFactoryTest extends Specification {
         then:
         result instanceof DefaultProjectConnection
         result.connection instanceof DefaultAsyncConnection
-        result.connection.connection instanceof ProgressLoggingConnection
-        result.connection.connection.connection instanceof LazyConnection
+        result.connection.connection instanceof LoggingInitializerConnection
+        result.connection.connection.connection instanceof ProgressLoggingConnection
+        result.connection.connection.connection.connection instanceof LazyConnection
         0 * _._
     }
 }

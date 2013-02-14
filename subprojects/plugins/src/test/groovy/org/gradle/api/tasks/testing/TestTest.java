@@ -22,14 +22,20 @@ import org.gradle.api.file.FileTree;
 import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.internal.file.CompositeFileTree;
 import org.gradle.api.internal.file.collections.DefaultFileCollectionResolveContext;
-import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.internal.file.collections.DirectoryFileTree;
 import org.gradle.api.internal.file.collections.FileTreeAdapter;
+import org.gradle.api.internal.file.collections.SimpleFileCollection;
+import org.gradle.api.internal.tasks.testing.TestDescriptorInternal;
 import org.gradle.api.internal.tasks.testing.TestFramework;
+import org.gradle.api.internal.tasks.testing.WorkerTestClassProcessorFactory;
 import org.gradle.api.internal.tasks.testing.detection.TestExecuter;
+import org.gradle.api.internal.tasks.testing.detection.TestFrameworkDetector;
 import org.gradle.api.internal.tasks.testing.junit.JUnitTestFramework;
+import org.gradle.api.internal.tasks.testing.junit.report.TestReporter;
+import org.gradle.api.internal.tasks.testing.junit.result.TestResultsProvider;
 import org.gradle.api.internal.tasks.testing.results.TestListenerAdapter;
 import org.gradle.api.tasks.AbstractConventionTaskTest;
+import org.gradle.process.internal.WorkerProcessBuilder;
 import org.gradle.util.GFileUtils;
 import org.gradle.util.HelperUtil;
 import org.gradle.util.TestClosure;
@@ -44,6 +50,7 @@ import org.junit.Before;
 import org.junit.runner.RunWith;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -66,6 +73,7 @@ public class TestTest extends AbstractConventionTaskTest {
 
     private File classesDir;
     private File resultsDir;
+    private File binResultsDir;
     private File reportDir;
 
     private JUnit4Mockery context = new JUnit4Mockery() {{
@@ -79,14 +87,12 @@ public class TestTest extends AbstractConventionTaskTest {
 
     @Before
     public void setUp() {
-        super.setUp();
-
-        File rootDir = getProject().getProjectDir();
-        classesDir = new File(rootDir, "testClassesDir");
+        classesDir = tmpDir.createDir("classes");
         File classfile = new File(classesDir, "FileTest.class");
         GFileUtils.touch(classfile);
-        resultsDir = new File(rootDir, "resultDir");
-        reportDir = new File(rootDir, "report/tests");
+        resultsDir = tmpDir.createDir("testResults");
+        binResultsDir = tmpDir.createDir("binResults");
+        reportDir = tmpDir.createDir("report");
 
         test = createTask(Test.class);
     }
@@ -104,13 +110,27 @@ public class TestTest extends AbstractConventionTaskTest {
         assertNull(test.getTestReportDir());
         assertThat(test.getIncludes(), isEmpty());
         assertThat(test.getExcludes(), isEmpty());
-        assertFalse(test.isIgnoreFailures());
+        assertFalse(test.getIgnoreFailures());
     }
 
     @org.junit.Test
     public void testExecute() {
         configureTask();
         expectTestsExecuted();
+
+        test.executeTests();
+    }
+
+    @org.junit.Test
+    public void generatesReport() {
+        configureTask();
+        expectTestsExecuted();
+
+        final TestReporter testReporter = context.mock(TestReporter.class);
+        test.setTestReporter(testReporter);
+        context.checking(new Expectations() {{
+            one(testReporter).generateReport(with(any(TestResultsProvider.class)), with(equal(reportDir)));
+        }});
 
         test.executeTests();
     }
@@ -146,12 +166,49 @@ public class TestTest extends AbstractConventionTaskTest {
     }
 
     @org.junit.Test
-    public void testAddsDefaultIncludeAndExcludePatternsWhenTestScanningIsOff() {
+    public void testSetsTestFrameworkToNullAfterExecution() {
         configureTask();
-        test.setScanForTestClasses(false);
+        // using a jmock generated mock for testFramework does not work here as it is referenced
+        // by jmock holds some references.
 
-        FileTree classFiles = test.getCandidateClassFiles();
-        assertIsDirectoryTree(classFiles, toSet("**/*Tests.class", "**/*Test.class"), toSet("**/Abstract*.class"));
+        test.useTestFramework(new TestFramework() {
+
+            public TestFrameworkDetector getDetector() {
+                return null;
+            }
+
+            public TestFrameworkOptions getOptions() {
+                return null;
+            }
+
+            public WorkerTestClassProcessorFactory getProcessorFactory() {
+                return null;
+            }
+
+            public org.gradle.api.Action<WorkerProcessBuilder> getWorkerConfigurationAction() {
+                return null;
+            }
+        });
+        context.checking(new Expectations() {{
+            one(testExecuterMock).execute(with(sameInstance(test)), with(notNullValue(TestListenerAdapter.class)));
+        }});
+
+        WeakReference<TestFramework> weakRef = new WeakReference<TestFramework>(test.getTestFramework());
+        test.executeTests();
+
+        System.gc(); //explicit gc should normally be avoided, but necessary here.
+
+        assertNull(weakRef.get());
+
+    }
+
+    @org.junit.Test
+    public void testDisablesParallelExecutionWhenInDebugMode() {
+        configureTask();
+        test.setDebug(true);
+        test.setMaxParallelForks(4);
+
+        assertEquals(1, test.getMaxParallelForks());
     }
 
     private void assertIsDirectoryTree(FileTree classFiles, Set<String> includes, Set<String> excludes) {
@@ -268,7 +325,6 @@ public class TestTest extends AbstractConventionTaskTest {
         expectOptionsBuilt();
         context.checking(new Expectations() {{
             one(testExecuterMock).execute(with(sameInstance(test)), with(notNullValue(TestListenerAdapter.class)));
-            one(testFrameworkMock).report();
         }});
     }
 
@@ -281,11 +337,13 @@ public class TestTest extends AbstractConventionTaskTest {
             will(returnValue(TestResult.ResultType.FAILURE));
             ignoring(result);
 
-            final TestDescriptor testDescriptor = context.mock(TestDescriptor.class);
+            final TestDescriptorInternal testDescriptor = context.mock(TestDescriptorInternal.class);
             allowing(testDescriptor).getName();
             will(returnValue("test"));
             allowing(testDescriptor).getParent();
             will(returnValue(null));
+            allowing(testDescriptor).getId();
+            will(returnValue(0));
 
             ignoring(testDescriptor);
 
@@ -301,17 +359,16 @@ public class TestTest extends AbstractConventionTaskTest {
                     return null;
                 }
             });
-
-            one(testFrameworkMock).report();
         }});
     }
 
     private void configureTask() {
         test.useTestFramework(testFrameworkMock);
         test.setTestExecuter(testExecuterMock);
-        
+
         test.setTestClassesDir(classesDir);
         test.setTestResultsDir(resultsDir);
+        test.setBinResultsDir(binResultsDir);
         test.setTestReportDir(reportDir);
         test.setClasspath(classpathMock);
         test.setTestSrcDirs(Collections.<File>emptyList());

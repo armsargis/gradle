@@ -24,6 +24,7 @@ import org.gradle.api.artifacts.Module;
 import org.gradle.api.artifacts.dsl.ArtifactHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.component.SoftwareComponentContainer;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.ConfigurableFileTree;
 import org.gradle.api.file.CopySpec;
@@ -37,19 +38,22 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.initialization.ScriptClassLoaderProvider;
 import org.gradle.api.internal.plugins.DefaultObjectConfigurationAction;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
-import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.logging.LoggingManager;
 import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.plugins.PluginContainer;
+import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.Directory;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.configuration.ProjectEvaluator;
 import org.gradle.configuration.ScriptPlugin;
 import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.groovy.scripts.ScriptSource;
+import org.gradle.internal.Factory;
+import org.gradle.internal.reflect.Instantiator;
+import org.gradle.listener.ClosureBackedMethodInvocationDispatch;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.StandardOutputCapture;
@@ -104,6 +108,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
 
     private FileResolver fileResolver;
     private FileOperations fileOperations;
+    private ProcessOperations processOperations;
 
     private Factory<AntBuilder> antBuilderFactory;
 
@@ -137,7 +142,9 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
 
     private LoggingManagerInternal loggingManager;
 
-    private DynamicObjectHelper dynamicObjectHelper;
+    private SoftwareComponentContainer softwareComponentContainer;
+
+    private ExtensibleDynamicObject extensibleDynamicObject;
 
     private String description;
 
@@ -173,6 +180,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         taskContainer = services.newInstance(TaskContainerInternal.class);
         implicitTasksContainer = services.newInstance(TaskContainerInternal.class);
         fileOperations = services.get(FileOperations.class);
+        processOperations = services.get(ProcessOperations.class);
         projectEvaluator = services.get(ProjectEvaluator.class);
         repositoryHandler = services.get(RepositoryHandler.class);
         configurationContainer = services.get(ConfigurationContainerInternal.class);
@@ -183,13 +191,13 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         scriptClassLoaderProvider = services.get(ScriptClassLoaderProvider.class);
         projectRegistry = services.get(IProjectRegistry.class);
         loggingManager = services.get(LoggingManagerInternal.class);
+        softwareComponentContainer = services.get(SoftwareComponentContainer.class);
 
-        dynamicObjectHelper = new DynamicObjectHelper(this);
-        dynamicObjectHelper.setConvention(services.get(Convention.class));
+        extensibleDynamicObject = new ExtensibleDynamicObject(this, services.get(Instantiator.class));
         if (parent != null) {
-            dynamicObjectHelper.setParent(parent.getInheritedScope());
+            extensibleDynamicObject.setParent(parent.getInheritedScope());
         }
-        dynamicObjectHelper.addObject(taskContainer.getTasksAsDynamicObject(), DynamicObjectHelper.Location.AfterConvention);
+        extensibleDynamicObject.addObject(taskContainer.getTasksAsDynamicObject(), ExtensibleDynamicObject.Location.AfterConvention);
 
         evaluationListener.add(gradle.getProjectEvaluationBroadcaster());
     }
@@ -238,8 +246,8 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public void setScript(Script buildScript) {
-        dynamicObjectHelper.addObject(new BeanDynamicObject(buildScript).withNoProperties(),
-                DynamicObjectHelper.Location.BeforeConvention);
+        extensibleDynamicObject.addObject(new BeanDynamicObject(buildScript).withNoProperties().withNotImplementsMissing(),
+                ExtensibleDynamicObject.Location.BeforeConvention);
     }
 
     public ScriptSource getBuildScriptSource() {
@@ -259,11 +267,11 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public DynamicObject getAsDynamicObject() {
-        return dynamicObjectHelper;
+        return extensibleDynamicObject;
     }
 
     public DynamicObject getInheritedScope() {
-        return dynamicObjectHelper.getInheritable();
+        return extensibleDynamicObject.getInheritable();
     }
 
     public String getName() {
@@ -323,10 +331,6 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return dependsOnProjects;
     }
 
-    public Map<String, Object> getAdditionalProperties() {
-        return dynamicObjectHelper.getAdditionalProperties();
-    }
-
     public ProjectStateInternal getState() {
         return state;
     }
@@ -363,17 +367,8 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         this.configurationContainer = configurationContainer;
     }
 
-    public String getBuildDirName() {
-        return buildDir.toString();
-    }
-
-    public void setBuildDirName(String buildDirName) {
-        DeprecationLogger.nagUser("Project.setBuildDirName()", "setBuildDir()");
-        this.buildDir = buildDirName;
-    }
-
     public Convention getConvention() {
-        return dynamicObjectHelper.getConvention();
+        return extensibleDynamicObject.getConvention();
     }
 
     public String getPath() {
@@ -399,11 +394,6 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         } else {
             return depthCompare;
         }
-    }
-
-    public String absolutePath(String path) {
-        DeprecationLogger.nagUser("Project.absolutePath()", "Project.absoluteProjectPath()");
-        return absoluteProjectPath(path);
     }
 
     public String absoluteProjectPath(String path) {
@@ -476,18 +466,6 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return this;
     }
 
-    public Project usePlugin(String pluginId) {
-        warnUsePluginDeprecated();
-        pluginContainer.apply(pluginId);
-        return this;
-    }
-
-    public Project usePlugin(Class<? extends Plugin> pluginClass) {
-        warnUsePluginDeprecated();
-        pluginContainer.apply(pluginClass);
-        return this;
-    }
-
     public TaskContainerInternal getTasks() {
         return taskContainer;
     }
@@ -509,22 +487,6 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         }
     }
 
-    public Task createTask(String name) {
-        return createTask(new HashMap<String, Object>(), name, (Action) null);
-    }
-
-    public Task createTask(Map<String, ?> args, String name) {
-        return createTask(args, name, (Action) null);
-    }
-
-    public Task createTask(String name, Action<? super Task> action) {
-        return createTask(new HashMap<String, Object>(), name, action);
-    }
-
-    public Task createTask(String name, Closure action) {
-        return createTask(new HashMap<String, Object>(), name, action);
-    }
-
     public Task createTask(Map args, String name, Closure action) {
         warnCreateTaskDeprecated();
         Map<String, Object> allArgs = new HashMap<String, Object>(args);
@@ -544,11 +506,7 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     private void warnCreateTaskDeprecated() {
-        DeprecationLogger.nagUser("Project.createTask()", "task()");
-    }
-
-    private void warnUsePluginDeprecated() {
-        DeprecationLogger.nagUser("Project.usePlugin()", "apply()");
+        DeprecationLogger.nagUserOfReplacedMethod("Project.createTask()", "task()");
     }
 
     public void addChildProject(ProjectInternal childProject) {
@@ -567,8 +525,14 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         buildDir = path;
     }
 
-    public void dependsOn(String path) {
-        dependsOn(path, true);
+    public void dependsOn(final String path) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("Project.dependsOn(String path)");
+        DeprecationLogger.whileDisabled(new Factory<Void>() {
+            public Void create() {
+                dependsOn(path, true);
+                return null;
+            }
+        });
     }
 
     public void dependsOn(String path, boolean evaluateDependsOnProject) {
@@ -581,11 +545,22 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         }
     }
 
+    public void evaluationDependsOnChildren() {
+        for (Project project : childProjects.values()) {
+            DefaultProject defaultProjectToEvaluate = (DefaultProject) project;
+            evaluationDependsOn(defaultProjectToEvaluate);
+        }
+    }
+
     public Project evaluationDependsOn(String path) {
         if (!isTrue(path)) {
             throw new InvalidUserDataException("You must specify a project!");
         }
         DefaultProject projectToEvaluate = (DefaultProject) project(path);
+        return evaluationDependsOn(projectToEvaluate);
+    }
+
+    private Project evaluationDependsOn(DefaultProject projectToEvaluate) {
         if (projectToEvaluate.getState().getExecuting()) {
             throw new CircularReferenceException(String.format("Circular referencing during evaluation for %s.",
                     projectToEvaluate));
@@ -594,20 +569,38 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public Project childrenDependOnMe() {
-        for (Project project : childProjects.values()) {
-            project.dependsOn(getPath(), false);
-        }
+        DeprecationLogger.nagUserOfDiscontinuedMethod("Project.childrenDependOnMe()");
+        DeprecationLogger.whileDisabled(new Factory<Void>() {
+            public Void create() {
+                for (Project project : childProjects.values()) {
+                    project.dependsOn(getPath(), false);
+                }
+                return null;
+            }
+        });
+
         return this;
     }
 
     public Project dependsOnChildren() {
-        return dependsOnChildren(false);
+        DeprecationLogger.nagUserOfDiscontinuedMethod("Project.dependsOnChildren()");
+        return DeprecationLogger.whileDisabled(new Factory<Project>() {
+            public Project create() {
+               return dependsOnChildren(false);
+            }
+        });
     }
 
-    public Project dependsOnChildren(boolean evaluateDependsOnProject) {
-        for (Project project : childProjects.values()) {
-            dependsOn(project.getPath(), evaluateDependsOnProject);
-        }
+    public Project dependsOnChildren(final boolean evaluateDependsOnProject) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("Project.dependsOnChildren(boolean)");
+        DeprecationLogger.whileDisabled(new Factory<Void>() {
+            public Void create() {
+                for (Project project : childProjects.values()) {
+                    dependsOn(project.getPath(), evaluateDependsOnProject);
+                }
+                return null;
+            }
+        });
         return this;
     }
 
@@ -679,11 +672,16 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return fileOperations.fileTree(baseDir);
     }
 
+    public ConfigurableFileTree fileTree(Object baseDir, Closure closure) {
+        return fileOperations.fileTree(baseDir, closure);
+    }
+
     public ConfigurableFileTree fileTree(Map<String, ?> args) {
         return fileOperations.fileTree(args);
     }
 
     public ConfigurableFileTree fileTree(Closure closure) {
+        DeprecationLogger.nagUserOfDeprecated("fileTree(Closure)", "Use fileTree((Object){ baseDir }) to have the closure used as the file tree base directory");
         return fileOperations.fileTree(closure);
     }
 
@@ -693,6 +691,10 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
 
     public FileTree tarTree(Object tarPath) {
         return fileOperations.tarTree(tarPath);
+    }
+
+    public ResourceHandler getResources() {
+        return fileOperations.getResources();
     }
 
     public String relativePath(Object path) {
@@ -707,7 +709,12 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return fileOperations.delete(paths);
     }
 
+    /**
+     * @deprecated Use the {@link #mkdir(Object)} instead.
+     */
+    @Deprecated
     public Directory dir(String path) {
+        DeprecationLogger.nagUserOfReplacedMethod("AbstractProject.dir()", "mkdir()");
         String[] pathElements = path.split("/");
         String name = "";
         Directory dirTask = null;
@@ -758,11 +765,11 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public void beforeEvaluate(Closure closure) {
-        evaluationListener.add("beforeEvaluate", closure);
+        evaluationListener.add(new ClosureBackedMethodInvocationDispatch("beforeEvaluate", closure));
     }
 
     public void afterEvaluate(Closure closure) {
-        evaluationListener.add("afterEvaluate", closure);
+        evaluationListener.add(new ClosureBackedMethodInvocationDispatch("afterEvaluate", closure));
     }
 
     public Logger getLogger() {
@@ -777,30 +784,28 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
         return loggingManager;
     }
 
-    public void disableStandardOutputCapture() {
-        DeprecationLogger.nagUser("Project.disableStandardOutputCapture()");
-        loggingManager.disableStandardOutputCapture();
-    }
-
-    public void captureStandardOutput(LogLevel level) {
-        DeprecationLogger.nagUser("Project.captureStandardOutput()", "getLogging().captureStandardOutput()");
-        loggingManager.captureStandardOutput(level);
+    public SoftwareComponentContainer getComponents() {
+        return softwareComponentContainer;
     }
 
     public Object property(String propertyName) throws MissingPropertyException {
-        return dynamicObjectHelper.getProperty(propertyName);
+        return extensibleDynamicObject.getProperty(propertyName);
     }
 
     public void setProperty(String name, Object value) {
-        dynamicObjectHelper.setProperty(name, value);
+        extensibleDynamicObject.setProperty(name, value);
     }
 
     public boolean hasProperty(String propertyName) {
-        return dynamicObjectHelper.hasProperty(propertyName);
+        return extensibleDynamicObject.hasProperty(propertyName);
     }
 
     public Map<String, ?> getProperties() {
-        return dynamicObjectHelper.getProperties();
+        return DeprecationLogger.whileDisabled(new Factory<Map<String, ?>>() {
+            public Map<String, ?> create() {
+                return extensibleDynamicObject.getProperties();
+            }
+        });
     }
 
     public WorkResult copy(Closure closure) {
@@ -812,11 +817,11 @@ public abstract class AbstractProject implements ProjectInternal, DynamicObjectA
     }
 
     public ExecResult javaexec(Closure closure) {
-        return fileOperations.javaexec(closure);
+        return processOperations.javaexec(closure);
     }
 
     public ExecResult exec(Closure closure) {
-        return fileOperations.exec(closure);
+        return processOperations.exec(closure);
     }
 
     public ServiceRegistryFactory getServices() {

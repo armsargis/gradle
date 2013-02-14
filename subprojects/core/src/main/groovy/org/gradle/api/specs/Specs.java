@@ -16,49 +16,50 @@
 package org.gradle.api.specs;
 
 import groovy.lang.Closure;
+import org.gradle.api.specs.internal.ClosureSpec;
+import org.gradle.util.DeprecationLogger;
 
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Provides a number of {@link Spec} implementations.
+ * Provides a number of {@link org.gradle.api.specs.Spec} implementations.
  *
  * @author Hans Dockter
  */
 public class Specs {
-    public static final Spec SATISFIES_ALL = new Spec() {
-        public boolean isSatisfiedBy(Object dependency) {
+
+    /*
+        Note: This should be in baseServicesGroovy, but it needs the DeprecationLogger which needs commons-lang
+              It as
+     */
+    public static final Spec<Object> SATISFIES_ALL = new Spec<Object>() {
+        public boolean isSatisfiedBy(Object element) {
             return true;
         }
     };
 
     public static <T> Spec<T> satisfyAll() {
-        return new Spec<T>() {
-            public boolean isSatisfiedBy(T element) {
-                return true;
-            }
-        };
+        return (Spec<T>)SATISFIES_ALL;
     }
 
+    public static final Spec<Object> SATISFIES_NONE = new Spec<Object>() {
+        public boolean isSatisfiedBy(Object element) {
+            return false;
+        }
+    };
+    
     public static <T> Spec<T> satisfyNone() {
-        return new Spec<T>() {
-            public boolean isSatisfiedBy(T element) {
-                return false;
-            }
-        };
+        return (Spec<T>)SATISFIES_NONE;
     }
 
-    public static <T> Spec<T> convertClosureToSpec(final Closure cl) {
-        return new Spec<T>() {
-            public boolean isSatisfiedBy(T element) {
-                Object value = cl.call(element);
-                return value == null ? false : ((Boolean) value).booleanValue();
-            }
-        };
+    public static <T> Spec<T> convertClosureToSpec(final Closure closure) {
+        return new ClosureSpec<T>(closure);
     }
 
     public static <T> Set<T> filterIterable(Iterable<? extends T> iterable, Spec<? super T> spec) {
+        DeprecationLogger.nagUserOfReplacedMethod("Specs.filterIterable", "CollectionUtils.filter");
         Set<T> result = new LinkedHashSet<T>();
         for (T t : iterable) {
             if (spec.isSatisfiedBy(t)) {

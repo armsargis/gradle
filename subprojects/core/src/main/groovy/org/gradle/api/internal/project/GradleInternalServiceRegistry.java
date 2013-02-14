@@ -15,13 +15,25 @@
  */
 package org.gradle.api.internal.project;
 
+import org.gradle.StartParameter;
+import org.gradle.api.internal.DependencyInjectingInstantiator;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder;
+import org.gradle.api.internal.changedetection.TaskArtifactStateCacheAccess;
+import org.gradle.api.internal.changedetection.TaskCacheLockHandlingBuildExecuter;
 import org.gradle.api.internal.plugins.DefaultPluginRegistry;
 import org.gradle.api.internal.plugins.PluginRegistry;
-import org.gradle.execution.DefaultTaskGraphExecuter;
-import org.gradle.execution.TaskGraphExecuter;
+import org.gradle.execution.*;
+import org.gradle.execution.taskgraph.DefaultTaskGraphExecuter;
+import org.gradle.execution.taskgraph.TaskPlanExecutor;
+import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.listener.ListenerManager;
+
+import java.util.LinkedList;
+import java.util.List;
+
+import static java.util.Arrays.asList;
 
 /**
  * Contains the services for a given {@link GradleInternal} instance.
@@ -33,6 +45,22 @@ public class GradleInternalServiceRegistry extends DefaultServiceRegistry implem
         super(parent);
         this.gradle = gradle;
         add(new TaskExecutionServices(parent, gradle));
+    }
+
+    protected BuildExecuter createBuildExecuter() {
+        List<BuildConfigurationAction> configs = new LinkedList<BuildConfigurationAction>();
+        if (get(StartParameter.class).isConfigureOnDemand()) {
+            configs.add(new ProjectEvaluatingAction());
+        }
+        configs.add(new DefaultTasksBuildExecutionAction());
+        configs.add(new ExcludedTaskFilteringBuildConfigurationAction());
+        configs.add(new TaskNameResolvingBuildConfigurationAction());
+
+        return new DefaultBuildExecuter(
+                configs,
+                asList(new DryRunBuildExecutionAction(),
+                        new TaskCacheLockHandlingBuildExecuter(get(TaskArtifactStateCacheAccess.class)),
+                        new SelectedTaskExecutionAction()));
     }
 
     protected ProjectFinder createProjectFinder() {
@@ -48,11 +76,11 @@ public class GradleInternalServiceRegistry extends DefaultServiceRegistry implem
     }
 
     protected TaskGraphExecuter createTaskGraphExecuter() {
-        return new DefaultTaskGraphExecuter(get(ListenerManager.class));
+        return new DefaultTaskGraphExecuter(get(ListenerManager.class), get(TaskPlanExecutor.class));
     }
 
     protected PluginRegistry createPluginRegistry() {
-        return new DefaultPluginRegistry(gradle.getScriptClassLoader());
+        return new DefaultPluginRegistry(gradle.getScriptClassLoader(), new DependencyInjectingInstantiator(this));
     }
 
     public ServiceRegistryFactory createFor(Object domainObject) {

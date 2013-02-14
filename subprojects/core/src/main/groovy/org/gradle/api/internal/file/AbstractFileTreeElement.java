@@ -19,6 +19,10 @@ import org.apache.commons.io.IOUtils;
 import org.gradle.api.GradleException;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.FileTreeElement;
+import org.gradle.internal.nativeplatform.filesystem.Chmod;
+import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.internal.nativeplatform.filesystem.FileSystems;
+import org.gradle.util.GFileUtils;
 
 import java.io.*;
 
@@ -52,17 +56,29 @@ public abstract class AbstractFileTreeElement implements FileTreeElement {
     }
 
     public boolean copyTo(File target) {
+        validateTimeStamps();
         try {
-            target.getParentFile().mkdirs();
             if (isDirectory()) {
-                target.mkdirs();
+                GFileUtils.mkdirs(target);
             } else {
+                GFileUtils.mkdirs(target.getParentFile());
                 copyFile(target);
             }
-            target.setLastModified(getLastModified());
+            getChmod().chmod(target, getMode());
             return true;
         } catch (Exception e) {
             throw new GradleException(String.format("Could not copy %s to '%s'.", getDisplayName(), target), e);
+        }
+    }
+
+    protected Chmod getChmod() {
+        return FileSystems.getDefault();
+    }
+
+    private void validateTimeStamps() {
+        final long lastModified = getLastModified();
+        if(lastModified < 0) {
+            throw new GradleException(String.format("Invalid Timestamp %s for '%s'.", lastModified, getDisplayName()));
         }
     }
 
@@ -73,5 +89,11 @@ public abstract class AbstractFileTreeElement implements FileTreeElement {
         } finally {
             outputStream.close();
         }
+    }
+
+    public int getMode() {
+        return isDirectory()
+            ? FileSystem.DEFAULT_DIR_MODE
+            : FileSystem.DEFAULT_FILE_MODE;
     }
 }

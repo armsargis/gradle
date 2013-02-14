@@ -4,14 +4,10 @@ repositories {
 }
 //END SNIPPET maven-central
 
-//START SNIPPET maven-password-protected-repo
-org.apache.ivy.util.url.CredentialsStore.INSTANCE.addCredentials("REALM", "HOST", "USER", "PASSWORD"); 
-//END SNIPPET maven-password-protected-repo
-
 //START SNIPPET maven-central-jar-repo
 repositories {
-    mavenCentral name: 'single-jar-repo', urls: "http://repo.mycompany.com/jars"
-    mavenCentral name: 'multi-jar-repos', urls: ["http://repo.mycompany.com/jars1", "http://repo.mycompany.com/jars2"]
+    mavenCentral name: 'single-jar-repo', artifactUrls: ["http://repo.mycompany.com/jars"]
+    mavenCentral name: 'multi-jar-repos', artifactUrls: ["http://repo.mycompany.com/jars1", "http://repo.mycompany.com/jars2"]
 }
 //END SNIPPET maven-central-jar-repo
 
@@ -23,22 +19,46 @@ repositories {
 
 //START SNIPPET maven-like-repo
 repositories {
-    mavenRepo urls: "http://repo.mycompany.com/maven2"
+    maven {
+        url "http://repo.mycompany.com/maven2"
+    }
 }
 //END SNIPPET maven-like-repo
 
 //START SNIPPET maven-like-repo-with-jar-repo
 repositories {
-    mavenRepo urls: ["http://repo2.mycompany.com/maven2", "http://repo.mycompany.com/jars"]
+    maven {
+        // Look for POMs and artifacts, such as JARs, here
+        url "http://repo2.mycompany.com/maven2"
+        // Look for artifacts here if not found at the above location
+        artifactUrls "http://repo.mycompany.com/jars"
+        artifactUrls "http://repo.mycompany.com/jars2"
+    }
 }
 //END SNIPPET maven-like-repo-with-jar-repo
+
+//START SNIPPET authenticated-maven-repo
+repositories {
+    maven {
+        credentials {
+            username 'user'
+            password 'password'
+        }
+        url "http://repo.mycompany.com/maven2"
+    }
+}
+//END SNIPPET authenticated-maven-repo
 
 //START SNIPPET flat-dir
 //START SNIPPET flat-dir-multi
 repositories {
-    flatDir name: 'localRepository', dirs: 'lib'
+    flatDir {
+        dirs 'lib'
+    }
 //END SNIPPET flat-dir
-    flatDir dirs: ['lib1', 'lib2']
+    flatDir {
+        dirs 'lib1', 'lib2'
+    }
 //START SNIPPET flat-dir
 }
 //END SNIPPET flat-dir
@@ -47,18 +67,71 @@ repositories {
 //START SNIPPET ivy-repo
 repositories {
     ivy {
-        name = 'ivyRepo'
-        artifactPattern "http://repo.mycompany.com/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]"
+        url "http://repo.mycompany.com/repo"
     }
 }
 //END SNIPPET ivy-repo
 
+//START SNIPPET local-ivy-repo
+repositories {
+    ivy {
+        // URL can refer to a local directory
+        url "../local-repo"
+    }
+}
+//END SNIPPET local-ivy-repo
+
+//START SNIPPET ivy-repo-with-maven-layout
+repositories {
+    ivy {
+        url "http://repo.mycompany.com/repo"
+        layout "maven"
+    }
+}
+//END SNIPPET ivy-repo-with-maven-layout
+
+//START SNIPPET ivy-repo-with-pattern-layout
+repositories {
+    ivy {
+        url "http://repo.mycompany.com/repo"
+        layout 'pattern', {
+            artifact "[module]/[revision]/[artifact].[ext]"
+            ivy "[module]/[revision]/ivy.xml"
+        }
+    }
+}
+//END SNIPPET ivy-repo-with-pattern-layout
+
+//START SNIPPET ivy-repo-with-m2compatible-layout
+repositories {
+    ivy {
+        url "http://repo.mycompany.com/repo"
+        layout 'pattern', {
+            artifact "[organisation]/[module]/[revision]/[artifact].[ext]"
+            ivy "[organisation]/[module]/[revision]/ivy.xml"
+            m2compatible = true
+        }
+    }
+}
+//END SNIPPET ivy-repo-with-m2compatible-layout
+
+//START SNIPPET ivy-repo-with-custom-pattern
+repositories {
+    ivy {
+        artifactPattern "http://repo.mycompany.com/3rd-party-artifacts/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]"
+        artifactPattern "http://repo.mycompany.com/company-artifacts/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]"
+        ivyPattern "http://repo.mycompany.com/ivy-files/[organisation]/[module]/[revision]/ivy.xml"
+    }
+}
+//END SNIPPET ivy-repo-with-custom-pattern
+
 //START SNIPPET authenticated-ivy-repo
 repositories {
     ivy {
-        name = 'privateIvyRepo'
-        userName = 'user'
-        password = 'password'
+        credentials {
+            username 'user'
+            password 'password'
+        }
         artifactPattern "http://repo.mycompany.com/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]"
     }
 }
@@ -72,6 +145,11 @@ task lookup << {
 }
 
 //START SNIPPET configure-resolver
+repositories {
+    flatDir {
+        name 'localRepository'
+    }
+}
 repositories {
     localRepository {
         dirs 'lib'

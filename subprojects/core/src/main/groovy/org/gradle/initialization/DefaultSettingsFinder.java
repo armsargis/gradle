@@ -16,36 +16,21 @@
 package org.gradle.initialization;
 
 import org.gradle.StartParameter;
-import org.gradle.groovy.scripts.UriScriptSource;
-import org.gradle.groovy.scripts.StringScriptSource;
-
-import java.io.File;
-import java.util.List;
+import org.gradle.initialization.layout.BuildLayout;
+import org.gradle.initialization.layout.BuildLayoutConfiguration;
+import org.gradle.initialization.layout.BuildLayoutFactory;
 
 /**
  * @author Hans Dockter
  */
 public class DefaultSettingsFinder implements ISettingsFinder {
-    private List<ISettingsFileSearchStrategy> settingsFileSearchStrategies;
+    private final BuildLayoutFactory layoutFactory;
 
-    public DefaultSettingsFinder(List<ISettingsFileSearchStrategy> settingsFileSearchStrategies) {
-        this.settingsFileSearchStrategies = settingsFileSearchStrategies;
+    public DefaultSettingsFinder(BuildLayoutFactory layoutFactory) {
+        this.layoutFactory = layoutFactory;
     }
 
-    public SettingsLocation find(StartParameter startParameter) {
-        File settingsFile = null;
-        for (ISettingsFileSearchStrategy settingsFileSearchStrategy : settingsFileSearchStrategies) {
-            settingsFile = settingsFileSearchStrategy.find(startParameter);
-            if (settingsFile != null) {
-                break;
-            }
-        }
-        if (settingsFile == null) {
-            return new SettingsLocation(startParameter.getCurrentDir(),
-                                       new StringScriptSource("empty settings file", ""));
-        } else {
-            return new SettingsLocation(settingsFile.getParentFile(),
-                                       new UriScriptSource("settings file", settingsFile));
-        }
+    public BuildLayout find(StartParameter startParameter) {
+        return layoutFactory.getLayoutFor(new BuildLayoutConfiguration(startParameter));
     }
 }

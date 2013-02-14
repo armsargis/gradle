@@ -29,12 +29,12 @@ import org.gradle.api.internal.file.collections.FileTreeAdapter
 import org.gradle.api.internal.file.copy.CopyActionImpl
 import org.gradle.api.internal.file.copy.CopySpecImpl
 import org.gradle.api.internal.tasks.TaskResolver
+import org.gradle.internal.os.OperatingSystem
 import org.gradle.process.ExecResult
 import org.gradle.process.internal.ExecException
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.ClasspathUtil
-import org.gradle.util.OperatingSystem
-import org.gradle.util.TemporaryFolder
-import org.gradle.util.TestFile
 import org.junit.Rule
 import org.junit.Test
 import spock.lang.Specification
@@ -45,7 +45,7 @@ public class DefaultFileOperationsTest extends Specification {
     private final TemporaryFileProvider temporaryFileProvider = Mock()
     private DefaultFileOperations fileOperations = new DefaultFileOperations(resolver, taskResolver, temporaryFileProvider)
     @Rule
-    public final TemporaryFolder tmpDir = new TemporaryFolder()
+    public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
 
     def resolvesFile() {
         when:
@@ -94,6 +94,22 @@ public class DefaultFileOperationsTest extends Specification {
         fileTree.resolver.is(resolver)
     }
 
+    def createsAndConfiguresFileTree() {
+        given:
+        TestFile baseDir = expectPathResolved('base')
+        
+        when:
+        def fileTree = fileOperations.fileTree('base') {
+            builtBy 1
+        }
+        
+        then:
+        fileTree instanceof FileTree
+        fileTree.dir == baseDir
+        fileTree.resolver.is(resolver)
+        fileTree.builtBy == [1] as Set
+    }
+    
     def createsFileTreeFromMap() {
         TestFile baseDir = expectPathResolved('base')
 
@@ -131,8 +147,8 @@ public class DefaultFileOperationsTest extends Specification {
     }
 
     def createsTarFileTree() {
-        expectPathResolved('path')
-        expectTempFileCreated()
+        TestFile file = tmpDir.file('path')
+        resolver.resolveResource('path') >> new FileResource(file)
 
         when:
         def tarTree = fileOperations.tarTree('path')
@@ -149,7 +165,7 @@ public class DefaultFileOperationsTest extends Specification {
 //        resolver.resolveFilesAsTree(['file'] as Object[]) >> fileTree
 //        resolver.resolveFilesAsTree(['file'] as Set) >> fileTree
         fileTree.matching(_) >> fileTree
-        resolver.resolve('dir') >> tmpDir.getDir()
+        resolver.resolve('dir') >> tmpDir.getTestDirectory()
 
         when:
         def result = fileOperations.copy { from 'file'; into 'dir' }
@@ -275,7 +291,7 @@ public class DefaultFileOperationsTest extends Specification {
         when:
         ExecResult result = fileOperations.exec {
             executable = "touch"
-            workingDir = tmpDir.getDir()
+            workingDir = tmpDir.getTestDirectory()
             args testFile.name
         }
 
@@ -293,8 +309,8 @@ public class DefaultFileOperationsTest extends Specification {
         when:
         fileOperations.exec {
             executable = "touch"
-            workingDir = tmpDir.getDir()
-            args tmpDir.dir.name + "/nonExistingDir/someFile"
+            workingDir = tmpDir.getTestDirectory()
+            args tmpDir.testDirectory.name + "/nonExistingDir/someFile"
         }
 
         then:
@@ -311,8 +327,8 @@ public class DefaultFileOperationsTest extends Specification {
         ExecResult result = fileOperations.exec {
             ignoreExitValue = true
             executable = "touch"
-            workingDir = tmpDir.getDir()
-            args tmpDir.dir.name + "/nonExistingDir/someFile"
+            workingDir = tmpDir.getTestDirectory()
+            args tmpDir.testDirectory.name + "/nonExistingDir/someFile"
         }
 
         then:
@@ -320,7 +336,7 @@ public class DefaultFileOperationsTest extends Specification {
     }
 
     def resolver() {
-        return new BaseDirConverter(tmpDir.testDir)
+        return TestFiles.resolver(tmpDir.testDirectory)
     }
 }
 

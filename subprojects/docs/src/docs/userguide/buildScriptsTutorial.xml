@@ -158,14 +158,17 @@
         <para>This enables very readable code, especially when using the out of the box tasks provided by the plugins
             (e.g. <literal>compile</literal>).</para>
     </section>
-    <section id='sec:dynamic_properties'>
-        <title>Dynamic task properties</title>
-        <para>You can assign arbitrary <emphasis>new</emphasis> properties to any task.
+    <section id='sec:extra_task_properties'>
+        <title>Extra task properties</title>
+        <para>You can add your own properties to a task. To add a property named <literal>myProperty</literal>,
+            set <literal>ext.myProperty</literal> to an initial value. From that point on, the property can be read
+            and set like a predefined task property.
         </para>
-        <sample id="dynamicProperties" dir="userguide/tutorial/dynamicProperties" title="Assigning properties to a task">
-            <sourcefile file="build.gradle"/>
-            <output args="-q showProps"/>
+        <sample id="extraTaskProperties" dir="userguide/tutorial/extraProperties" title="Adding extra properties to a task">
+            <sourcefile file="build.gradle" snippet="taskProperties"/>
+            <output args="-q printTaskProperties"/>
         </sample>
+        Extra properties aren't limited to tasks. You can read more about them in <xref linkend='sec:extra_properties'/>.
     </section>
     <section>
         <title>Using Ant Tasks</title>
@@ -228,10 +231,13 @@
         </para>
     </section>
     <section>
-        <title>Summary</title>
-        <para>This is not the end of the story for tasks. So far we have worked with simple tasks. Tasks will be
-            revisited in <xref linkend='more_about_tasks'/> and when we look at the Java plugin in
-            <xref linkend='java_plugin'/>.
+        <title>Where to next?</title>
+        <para>
+            In this chapter, we have had a first look at tasks. But this is not the end of the story for tasks. If you want to jump into more of the details,
+            have a look at <xref linkend='more_about_tasks'/>.
+        </para>
+        <para>
+            Otherwise, continue on to the tutorials in <xref linkend="tutorial_java_projects"/> and <xref linkend="artifact_dependencies_tutorial"/>.
         </para>
     </section>
 </chapter>

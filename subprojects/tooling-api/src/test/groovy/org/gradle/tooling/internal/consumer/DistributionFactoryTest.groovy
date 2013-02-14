@@ -17,18 +17,20 @@ package org.gradle.tooling.internal.consumer
 
 import org.gradle.logging.ProgressLogger
 import org.gradle.logging.ProgressLoggerFactory
-import org.gradle.util.TemporaryFolder
-import org.gradle.util.TestFile
-import org.junit.Rule
-import spock.lang.Specification
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.testing.internal.util.Network
 import org.gradle.util.DistributionLocator
 import org.gradle.util.GradleVersion
+import org.junit.Rule
+import spock.lang.IgnoreIf
+import spock.lang.Specification
 
 class DistributionFactoryTest extends Specification {
-    @Rule final TemporaryFolder tmpDir = new TemporaryFolder()
+    @Rule final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     final ProgressLoggerFactory progressLoggerFactory = Mock()
     final ProgressLogger progressLogger = Mock()
-    final DistributionFactory factory = new DistributionFactory(tmpDir.file('userHome'), progressLoggerFactory)
+    final DistributionFactory factory = new DistributionFactory(tmpDir.file('userHome'))
 
     def setup() {
         _ * progressLoggerFactory.newOperation(!null) >> progressLogger
@@ -39,19 +41,28 @@ class DistributionFactoryTest extends Specification {
         tmpDir.file('gradle/wrapper/gradle-wrapper.properties') << "distributionUrl=${zipFile.toURI()}"
 
         expect:
-        factory.getDefaultDistribution(tmpDir.dir).displayName == "Gradle distribution '${zipFile.toURI()}'"
+        factory.getDefaultDistribution(tmpDir.testDirectory, false).displayName == "Gradle distribution '${zipFile.toURI()}'"
+    }
+
+    def usesTheWrapperPropertiesToDetermineTheDefaultDistributionForASubprojectInAMultiProjectBuild() {
+        def zipFile = createZip { }
+        tmpDir.file('settings.gradle') << 'include "child"'
+        tmpDir.file('gradle/wrapper/gradle-wrapper.properties') << "distributionUrl=${zipFile.toURI()}"
+
+        expect:
+        factory.getDefaultDistribution(tmpDir.testDirectory.createDir("child"), true).displayName == "Gradle distribution '${zipFile.toURI()}'"
     }
 
     def usesTheCurrentVersionAsTheDefaultDistributionWhenNoWrapperPropertiesFilePresent() {
         def uri = new DistributionLocator().getDistributionFor(GradleVersion.current())
 
         expect:
-        factory.getDefaultDistribution(tmpDir.dir).displayName == "Gradle distribution '${uri}'"
+        factory.getDefaultDistribution(tmpDir.testDirectory, false).displayName == "Gradle distribution '${uri}'"
     }
 
     def createsADisplayNameForAnInstallation() {
         expect:
-        factory.getDistribution(tmpDir.dir).displayName == "Gradle installation '${tmpDir.dir}'"
+        factory.getDistribution(tmpDir.testDirectory).displayName == "Gradle installation '${tmpDir.testDirectory}'"
     }
 
     def usesContentsOfInstallationLibDirectoryAsImplementationClasspath() {
@@ -59,8 +70,8 @@ class DistributionFactoryTest extends Specification {
         def libB = tmpDir.createFile("lib/b.jar")
 
         expect:
-        def dist = factory.getDistribution(tmpDir.dir)
-        dist.toolingImplementationClasspath == [libA, libB] as Set
+        def dist = factory.getDistribution(tmpDir.testDirectory)
+        dist.getToolingImplementationClasspath(progressLoggerFactory).asFiles as Set == [libA, libB] as Set
     }
 
     def failsWhenInstallationDirectoryDoesNotExist() {
@@ -68,7 +79,7 @@ class DistributionFactoryTest extends Specification {
         def dist = factory.getDistribution(distDir)
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
         IllegalArgumentException e = thrown()
@@ -80,7 +91,7 @@ class DistributionFactoryTest extends Specification {
         def dist = factory.getDistribution(distDir)
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
         IllegalArgumentException e = thrown()
@@ -92,7 +103,7 @@ class DistributionFactoryTest extends Specification {
         def dist = factory.getDistribution(distDir)
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
         IllegalArgumentException e = thrown()
@@ -116,7 +127,7 @@ class DistributionFactoryTest extends Specification {
         def dist = factory.getDistribution(zipFile.toURI())
 
         expect:
-        dist.toolingImplementationClasspath.collect { it.name } as Set == ['a.jar', 'b.jar'] as Set
+        dist.getToolingImplementationClasspath(progressLoggerFactory).asFiles.name as Set == ['a.jar', 'b.jar'] as Set
     }
 
     def reportsZipDownload() {
@@ -126,24 +137,33 @@ class DistributionFactoryTest extends Specification {
             }
         }
         def dist = factory.getDistribution(zipFile.toURI())
+        ProgressLogger loggerOne = Mock()
+        ProgressLogger loggerTwo = Mock()
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
-        1 * progressLoggerFactory.newOperation(DistributionFactory.class) >> progressLogger
-        1 * progressLogger.setDescription("Download ${zipFile.toURI()}")
-        1 * progressLogger.started()
-        1 * progressLogger.completed()
+        2 * progressLoggerFactory.newOperation(DistributionFactory.class) >>> [loggerOne, loggerTwo]
+
+        1 * loggerOne.setDescription("Download ${zipFile.toURI()}")
+        1 * loggerOne.started()
+        1 * loggerOne.completed()
+
+        1 * loggerTwo.setDescription("Validate distribution")
+        1 * loggerTwo.started()
+        1 * loggerTwo.completed()
+
         0 * _._
     }
 
+    @IgnoreIf({ Network.offline })
     def failsWhenDistributionZipDoesNotExist() {
-        URI zipFile = new URI("http://gradle.org/does-not-exist/gradle-1.0.zip")
+        URI zipFile = new URI("http://google.com/does-not-exist/gradle-1.0.zip")
         def dist = factory.getDistribution(zipFile)
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
         IllegalArgumentException e = thrown()
@@ -155,7 +175,7 @@ class DistributionFactoryTest extends Specification {
         def dist = factory.getDistribution(zipFile.toURI())
 
         when:
-        dist.toolingImplementationClasspath
+        dist.getToolingImplementationClasspath(progressLoggerFactory)
 
         then:
         IllegalArgumentException e = thrown()

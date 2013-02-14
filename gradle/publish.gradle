@@ -6,6 +6,9 @@ configurations {
     compile {
         extendsFrom publishCompile
     }
+    publishCompileWithProjectJar {
+        extendsFrom publishCompile
+    }
 }
 
 task sourceJar(type: Jar) {
@@ -14,13 +17,13 @@ task sourceJar(type: Jar) {
 }
 
 task generatePom {
-    pomFile = new File(temporaryDir, 'pom.xml')
+    ext.pomFile = new File(temporaryDir, 'pom.xml')
     doLast {
         dependencies {
-            configurations.publishCompile.getAllDependencies(ProjectDependency).each {
-                publishRuntime "org.gradle:gradle-${it.dependencyProject.name}:${version}"
+            configurations.publishCompile.allDependencies.withType(ProjectDependency).each {
+                publishRuntime "org.gradle:${it.dependencyProject.archivesBaseName}:${version}"
             }
-            configurations.publishCompile.getAllDependencies(ExternalModuleDependency).each {
+            configurations.publishCompile.allDependencies.withType(ExternalModuleDependency).each {
                 publishRuntime it
             }
         }
@@ -35,27 +38,39 @@ task generatePom {
             pom.version = version
             pom.writeTo(pomFile)
         }
-
     }
 }
 
 artifacts {
+    publishCompileWithProjectJar jar
     publishRuntime jar
     publishRuntime sourceJar
     publishRuntime new org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact(archivesBaseName, 'pom', 'pom', null, new Date(), generatePom.pomFile, generatePom)
 }
 
-uploadArchives {
+uploadArchives { task ->
+    onlyIf { !project.hasProperty("noUpload") }
+
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.hasTask(task)) {
+            // check properties defined and fail early
+            artifactoryUserName
+            artifactoryUserPassword
+        }
+    }
+
     configuration = configurations.publishRuntime
     dependsOn generatePom
     uploadDescriptor = false
     doFirst {
         repositories {
             ivy {
-                name = 'gradleLibs'
-                artifactPattern "${version.libsUrl}/${project.group.replaceAll('\\.', '/')}/${archivesBaseName}/[revision]/[artifact]-[revision](-[classifier]).[ext]"
-                userName = artifactoryUserName
-                password = artifactoryUserPassword
+                def repo = "https://gradle.artifactoryonline.com/gradle/libs-${isSnapshot ? 'snapshots' : 'releases'}-local"
+                artifactPattern "${repo}/${project.group.replaceAll('\\.', '/')}/${archivesBaseName}/[revision]/[artifact]-[revision](-[classifier]).[ext]"
+                credentials {
+                    username = artifactoryUserName
+                    password = artifactoryUserPassword
+                }
             }
         }
     }

@@ -17,7 +17,9 @@ package org.gradle.cache.internal;
 
 import org.gradle.CacheUsage;
 import org.gradle.api.Action;
+import org.gradle.api.UncheckedIOException;
 import org.gradle.cache.CacheOpenException;
+import org.gradle.cache.CacheValidator;
 import org.gradle.cache.PersistentCache;
 import org.gradle.util.GFileUtils;
 import org.gradle.util.GUtil;
@@ -31,58 +33,64 @@ import java.util.Properties;
 
 import static org.gradle.cache.internal.FileLockManager.LockMode;
 
-public class DefaultPersistentDirectoryCache implements PersistentCache {
+public class DefaultPersistentDirectoryCache extends DefaultPersistentDirectoryStore implements ReferencablePersistentCache {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultPersistentDirectoryCache.class);
-    private final File dir;
     private final File propertiesFile;
     private final Properties properties = new Properties();
-    private final FileLock lock;
+    private final CacheUsage cacheUsage;
+    private final Action<? super PersistentCache> initAction;
+    private final CacheValidator validator;
+    private boolean didRebuild;
 
-    public DefaultPersistentDirectoryCache(File dir, CacheUsage cacheUsage, Map<String, ?> properties, LockMode lockMode, Action<? super PersistentCache> initAction, FileLockManager lockManager) {
-        this.dir = dir;
+    public DefaultPersistentDirectoryCache(File dir, String displayName, CacheUsage cacheUsage, CacheValidator validator, Map<String, ?> properties, LockMode lockMode, Action<? super PersistentCache> initAction, FileLockManager lockManager) {
+        super(dir, displayName, lockMode, lockManager);
+        if (lockMode == LockMode.None) {
+            throw new UnsupportedOperationException("Locking mode None is not supported.");
+        }
+        this.validator = validator;
+        this.cacheUsage = cacheUsage;
+        this.initAction = initAction;
         propertiesFile = new File(dir, "cache.properties");
         this.properties.putAll(properties);
-        lock = init(cacheUsage, properties, initAction, lockMode, lockManager);
-    }
-
-    private FileLock init(CacheUsage cacheUsage, Map<String, ?> properties, final Action<? super PersistentCache> initAction, LockMode lockMode, FileLockManager lockManager) {
-        if (!dir.isDirectory()) {
-            dir.mkdirs();
-        }
-        try {
-            // Start with desired lock mode and check if cache is valid or not
-            final FileLock lock = lockManager.lock(propertiesFile, lockMode, toString());
-            try {
-                boolean valid = determineIfCacheIsValid(cacheUsage, properties, lock);
-                if (!valid) {
-                    // Escalate to exclusive lock and rebuilt the cache
-                    lock.writeToFile(new Runnable() {
-                        public void run() {
-                            buildCacheDir(initAction, lock);
-                        }
-                    });
-                }
-            } catch (Throwable throwable) {
-                lock.close();
-                throw throwable;
-            }
-            return lock;
-        } catch (Throwable e) {
-            throw new CacheOpenException(String.format("Could not open %s.", this), e);
-        }
-    }
-
-    public void close() {
-        lock.close();
     }
 
     @Override
-    public String toString() {
-        return String.format("cache directory %s", dir);
+    protected File getLockTarget() {
+        // Lock the properties file, instead of the directory, for backwards compatibility
+        return propertiesFile;
+    }
+
+    protected void init() throws IOException {
+        boolean valid = determineIfCacheIsValid(getLock());
+        int tries = 3;
+        while (!valid) {
+            if (--tries < 0) {
+                throw new CacheOpenException(String.format("Failed to init valid cache for %s", this));
+            }
+            withExclusiveLock(new Action<FileLock>() {
+                public void execute(final FileLock fileLock) {
+                    boolean exclusiveLockValid;
+                    try {
+                        exclusiveLockValid = determineIfCacheIsValid(fileLock);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+
+                    if (!exclusiveLockValid) {
+                        fileLock.writeFile(new Runnable() {
+                            public void run() {
+                                buildCacheDir(initAction, fileLock);
+                            }
+                        });
+                    }
+                }
+            });
+            valid = determineIfCacheIsValid(getLock());
+        }
     }
 
     private void buildCacheDir(Action<? super PersistentCache> initAction, FileLock fileLock) {
-        for (File file : dir.listFiles()) {
+        for (File file : getBaseDir().listFiles()) {
             if (fileLock.isLockFile(file) || file.equals(propertiesFile)) {
                 continue;
             }
@@ -92,20 +100,29 @@ public class DefaultPersistentDirectoryCache implements PersistentCache {
             initAction.execute(this);
         }
         GUtil.saveProperties(properties, propertiesFile);
+        didRebuild = true;
     }
 
-    private boolean determineIfCacheIsValid(CacheUsage cacheUsage, Map<String, ?> properties, FileLock lock) throws IOException {
-        if (cacheUsage != CacheUsage.ON) {
-            LOGGER.debug("Invalidating {} as cache usage is set to rebuild.", this);
-            return false;
+    // made protected for DefaultPersistentDirectoryCacheTest.exceptionThrownIfValidCacheCannotBeInitd
+    protected boolean determineIfCacheIsValid(FileLock lock) throws IOException {
+        if (!didRebuild) {
+            if (cacheUsage != CacheUsage.ON) {
+                LOGGER.debug("Invalidating {} as cache usage is set to rebuild.", this);
+                return false;
+            }
+            if (validator!=null && !validator.isValid()) {
+                LOGGER.debug("Invalidating {} as cache validator return false.", this);
+                return false;
+            }
         }
+
         if (!lock.getUnlockedCleanly()) {
-            LOGGER.debug("Invalidating {} as it was not close cleanly.", this);
+            LOGGER.debug("Invalidating {} as it was not closed cleanly.", this);
             return false;
         }
         Properties currentProperties = GUtil.loadProperties(propertiesFile);
-        for (Map.Entry<String, ?> entry : properties.entrySet()) {
-            if (!entry.getValue().toString().equals(currentProperties.getProperty(entry.getKey()))) {
+        for (Map.Entry<?, ?> entry : properties.entrySet()) {
+            if (!entry.getValue().toString().equals(currentProperties.getProperty(entry.getKey().toString()))) {
                 LOGGER.debug("Invalidating {} as cache property {} has changed value.", this, entry.getKey());
                 return false;
             }
@@ -115,13 +132,5 @@ public class DefaultPersistentDirectoryCache implements PersistentCache {
 
     public Properties getProperties() {
         return properties;
-    }
-
-    public File getBaseDir() {
-        return dir;
-    }
-
-    public FileLock getLock() {
-        return lock;
     }
 }

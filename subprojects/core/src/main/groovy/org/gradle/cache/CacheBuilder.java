@@ -25,7 +25,8 @@ public interface CacheBuilder<T> {
          */
         CachePerVersion,
         /**
-         * A single cache instance shared by all Gradle versions.
+         * A single cache instance shared by all Gradle versions. It is the caller's responsibility to make sure that this is shared only with
+         * those versions of Gradle that are compatible with the cache implementation and contents.
          */
         SharedCache,
         /**
@@ -58,6 +59,14 @@ public interface CacheBuilder<T> {
      * @return this
      */
     CacheBuilder<T> withVersionStrategy(VersionStrategy strategy);
+
+    /**
+     * Specifies a cache validator for this cache. If {@link CacheValidator#isValid()} results in false, the Cache is considered as invalid.
+     *
+     * @param validator The validator
+     * @return this
+     */
+    CacheBuilder<T> withValidator(CacheValidator validator);
 
     /**
      * Opens the cache.

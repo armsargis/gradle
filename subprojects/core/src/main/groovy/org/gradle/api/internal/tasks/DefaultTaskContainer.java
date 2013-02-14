@@ -21,23 +21,30 @@ import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.UnknownTaskException;
+import org.gradle.api.internal.CachingDirectedGraphWalker;
+import org.gradle.api.internal.DirectedGraph;
 import org.gradle.api.internal.DynamicObject;
-import org.gradle.api.internal.Instantiator;
 import org.gradle.api.internal.NamedDomainObjectContainerConfigureDelegate;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
+import org.gradle.initialization.ProjectAccessListener;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.util.ConfigureUtil;
+import org.gradle.util.DeprecationLogger;
 import org.gradle.util.GUtil;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
 public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements TaskContainerInternal {
     private final ITaskFactory taskFactory;
+    private final ProjectAccessListener projectAccessListener;
 
-    public DefaultTaskContainer(ProjectInternal project, Instantiator instantiator, ITaskFactory taskFactory) {
+    public DefaultTaskContainer(ProjectInternal project, Instantiator instantiator, ITaskFactory taskFactory, ProjectAccessListener projectAccessListener) {
         super(Task.class, instantiator, project);
         this.taskFactory = taskFactory;
+        this.projectAccessListener = projectAccessListener;
     }
 
     public Task add(Map<String, ?> options) {
@@ -46,7 +53,7 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         Object replaceStr = mutableOptions.remove(Task.TASK_OVERWRITE);
         boolean replace = replaceStr != null && "true".equals(replaceStr.toString());
 
-        Task task = taskFactory.createTask(project, mutableOptions);
+        Task task = taskFactory.createTask(mutableOptions);
         String name = task.getName();
 
         Task existing = findByNameWithoutRules(name);
@@ -105,16 +112,24 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         }
 
         String projectPath = StringUtils.substringBeforeLast(path, Project.PATH_SEPARATOR);
-        Project project = this.project.findProject(!GUtil.isTrue(projectPath) ? Project.PATH_SEPARATOR : projectPath);
+        ProjectInternal project = this.project.findProject(!GUtil.isTrue(projectPath) ? Project.PATH_SEPARATOR : projectPath);
         if (project == null) {
             return null;
         }
+        projectAccessListener.beforeRequestingTaskByPath(project);
+
         return project.getTasks().findByName(StringUtils.substringAfterLast(path, Project.PATH_SEPARATOR));
     }
 
     public Task resolveTask(Object path) {
         if (!GUtil.isTrue(path)) {
             throw new InvalidUserDataException("A path must be specified!");
+        }
+        if(!(path instanceof CharSequence)) {
+            DeprecationLogger.nagUserOfDeprecated(
+                    String.format("Converting class %s to a task dependency using toString()", path.getClass().getName()),
+                    "Please use org.gradle.api.Task, java.lang.String, org.gradle.api.Buildable, org.gradle.tasks.TaskDependency or a Closure to declare your task dependencies"
+            );
         }
         return getByPath(path.toString());
     }
@@ -138,5 +153,13 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
 
     public DynamicObject getTasksAsDynamicObject() {
         return getElementsAsDynamicObject();
+    }
+
+    public void actualize() {
+        new CachingDirectedGraphWalker<Task, Void>(new DirectedGraph<Task, Void>() {
+            public void getNodeValues(Task node, Collection<Void> values, Collection<Task> connectedNodes) {
+                connectedNodes.addAll(node.getTaskDependencies().getDependencies(node));
+            }
+        }).add(this).findValues();
     }
 }

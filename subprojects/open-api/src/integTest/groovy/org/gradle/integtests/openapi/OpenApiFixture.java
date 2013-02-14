@@ -15,13 +15,12 @@
  */
 package org.gradle.integtests.openapi;
 
-import org.gradle.integtests.fixtures.GradleDistribution;
-import org.gradle.integtests.fixtures.RuleHelper;
-import org.gradle.openapi.external.ui.CommandLineArgumentAlteringListenerVersion1;
+import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext;
+import org.gradle.internal.UncheckedException;
 import org.gradle.openapi.external.ui.DualPaneUIVersion1;
 import org.gradle.openapi.external.ui.SinglePaneUIVersion1;
 import org.gradle.openapi.external.ui.UIFactory;
-import org.gradle.util.UncheckedException;
+import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.junit.Assert;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
@@ -29,19 +28,22 @@ import org.junit.runners.model.Statement;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 public class OpenApiFixture implements MethodRule {
-    private GradleDistribution dist;
+    private IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext();
+    private final TestDirectoryProvider testDirectoryProvider;
     private final List<JFrame> frames = new ArrayList<JFrame>();
+
+    public OpenApiFixture(TestDirectoryProvider testDirectoryProvider) {
+        this.testDirectoryProvider = testDirectoryProvider;
+    }
 
     public Statement apply(final Statement base, FrameworkMethod method, final Object target) {
         return new Statement() {
             @Override
             public void evaluate() throws Throwable {
-                dist = RuleHelper.getField(target, GradleDistribution.class);
                 try {
                     base.evaluate();
                 } finally {
@@ -61,16 +63,16 @@ public class OpenApiFixture implements MethodRule {
         TestSingleDualPaneUIInteractionVersion1 testSingleDualPaneUIInteractionVersion1 = new TestSingleDualPaneUIInteractionVersion1(new TestAlternateUIInteractionVersion1(), new TestSettingsNodeVersion1());
         SinglePaneUIVersion1 singlePane;
         try {
-            singlePane = UIFactory.createSinglePaneUI(getClass().getClassLoader(), dist.getGradleHomeDir(), testSingleDualPaneUIInteractionVersion1, false);
+            singlePane = UIFactory.createSinglePaneUI(getClass().getClassLoader(), buildContext.getGradleHomeDir(), testSingleDualPaneUIInteractionVersion1, false);
         } catch (Exception e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
 
         //make sure we got something
         Assert.assertNotNull(singlePane);
 
-        singlePane.setCurrentDirectory(dist.getTestDir());
-        singlePane.addCommandLineArgumentAlteringListener(new ExtraTestCommandLineOptionsListener(dist.getUserHomeDir()));
+        singlePane.setCurrentDirectory(testDirectoryProvider.getTestDirectory());
+        singlePane.addCommandLineArgumentAlteringListener(new ExtraTestCommandLineOptionsListener(buildContext.getGradleUserHomeDir()));
 
         return singlePane;
     }
@@ -79,16 +81,16 @@ public class OpenApiFixture implements MethodRule {
         TestSingleDualPaneUIInteractionVersion1 testSingleDualPaneUIInteractionVersion1 = new TestSingleDualPaneUIInteractionVersion1(new TestAlternateUIInteractionVersion1(), new TestSettingsNodeVersion1());
         DualPaneUIVersion1 dualPane;
         try {
-            dualPane = UIFactory.createDualPaneUI(getClass().getClassLoader(), dist.getGradleHomeDir(), testSingleDualPaneUIInteractionVersion1, false);
+            dualPane = UIFactory.createDualPaneUI(getClass().getClassLoader(), buildContext.getGradleHomeDir(), testSingleDualPaneUIInteractionVersion1, false);
         } catch (Exception e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
 
         //make sure we got something
         Assert.assertNotNull(dualPane);
 
-        dualPane.setCurrentDirectory(dist.getTestDir());
-        dualPane.addCommandLineArgumentAlteringListener(new ExtraTestCommandLineOptionsListener(dist.getUserHomeDir()));
+        dualPane.setCurrentDirectory(testDirectoryProvider.getTestDirectory());
+        dualPane.addCommandLineArgumentAlteringListener(new ExtraTestCommandLineOptionsListener(buildContext.getGradleUserHomeDir()));
 
         return dualPane;
     }
@@ -122,7 +124,7 @@ public class OpenApiFixture implements MethodRule {
                 }
             });
         } catch (Exception e) {
-            throw UncheckedException.asUncheckedException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -149,15 +151,4 @@ public class OpenApiFixture implements MethodRule {
         return frame;
     }
 
-    private static class ExtraTestCommandLineOptionsListener implements CommandLineArgumentAlteringListenerVersion1 {
-        private final File gradleUserHomeDir;
-
-        public ExtraTestCommandLineOptionsListener(File gradleUserHomeDir) {
-            this.gradleUserHomeDir = gradleUserHomeDir;
-        }
-
-        public String getAdditionalCommandLineArguments(String commandLineArguments) {
-            return String.format("--no-search-upward --gradle-user-home \'%s\'", gradleUserHomeDir);
-        }
-    }
 }

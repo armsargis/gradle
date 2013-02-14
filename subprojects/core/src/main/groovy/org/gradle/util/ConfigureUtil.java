@@ -18,30 +18,63 @@ package org.gradle.util;
 
 import groovy.lang.Closure;
 import groovy.lang.MissingMethodException;
-import groovy.lang.MissingPropertyException;
+import org.gradle.api.internal.ClosureBackedAction;
+import org.gradle.api.internal.DynamicObject;
+import org.gradle.api.internal.DynamicObjectUtil;
 
+import java.util.Collection;
 import java.util.Map;
+
+import static org.gradle.util.CollectionUtils.toStringList;
 
 /**
  * @author Hans Dockter
  */
 public class ConfigureUtil {
 
-    public static <T> T configureByMap(Map<String, ?> properties, T delegate) {
-        for (Map.Entry<String, ?> entry : properties.entrySet()) {
-            try {
-                ReflectionUtil.setProperty(delegate, entry.getKey(), entry.getValue());
-            } catch (MissingPropertyException e) {
-                // Try as a method
+    public static <T> T configureByMap(Map<?, ?> properties, T delegate) {
+        DynamicObject dynamicObject = DynamicObjectUtil.asDynamicObject(delegate);
+
+        for (Map.Entry<?, ?> entry : properties.entrySet()) {
+            String name = entry.getKey().toString();
+            Object value = entry.getValue();
+
+            if (dynamicObject.hasProperty(name)) {
+                dynamicObject.setProperty(name, value);
+            } else {
                 try {
-                    ReflectionUtil.invoke(delegate, entry.getKey(), new Object[]{entry.getValue()});
-                } catch (MissingMethodException mme) {
-                    // Throw the original MPE
-                    throw e;
+                    dynamicObject.invokeMethod(name, value);
+                } catch (MissingMethodException e) {
+                    dynamicObject.setProperty(name, value);
                 }
             }
         }
+
         return delegate;
+    }
+
+    public static <T> T configureByMap(Map<?, ?> properties, T delegate, Collection<?> mandatoryKeys) {
+        if (!mandatoryKeys.isEmpty()) {
+            Collection<String> missingKeys = toStringList(mandatoryKeys);
+            missingKeys.removeAll(toStringList(properties.keySet()));
+            if (!missingKeys.isEmpty()) {
+                throw new IncompleteInputException("Input configuration map does not contain following mandatory keys: " + missingKeys, missingKeys);
+            }
+        }
+        return configureByMap(properties, delegate);
+    }
+
+    public static class IncompleteInputException extends RuntimeException {
+        private final Collection missingKeys;
+
+        public IncompleteInputException(String message, Collection missingKeys) {
+            super(message);
+            this.missingKeys = missingKeys;
+        }
+
+        public Collection getMissingKeys() {
+            return missingKeys;
+        }
     }
 
     /**
@@ -96,23 +129,8 @@ public class ConfigureUtil {
     }
 
     private static <T> T configure(Closure configureClosure, T delegate, int resolveStrategy, boolean configureableAware) {
-        if (configureClosure == null) {
-            return delegate;
-        }
-
-        if (configureableAware && delegate instanceof Configurable) {
-            ((Configurable)delegate).configure(configureClosure);
-        } else {
-            Closure copy = (Closure) configureClosure.clone();
-            copy.setResolveStrategy(resolveStrategy);
-            copy.setDelegate(delegate);
-            if (copy.getMaximumNumberOfParameters() == 0) {
-                copy.call();
-            } else {
-                copy.call(delegate);
-            }
-        }
-
+        ClosureBackedAction<T> action = new ClosureBackedAction<T>(configureClosure, resolveStrategy, configureableAware);
+        action.execute(delegate);
         return delegate;
     }
 }

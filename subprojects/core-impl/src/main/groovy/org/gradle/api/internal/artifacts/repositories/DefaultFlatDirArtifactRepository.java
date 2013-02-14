@@ -15,31 +15,28 @@
  */
 package org.gradle.api.internal.artifacts.repositories;
 
+import com.google.common.collect.Lists;
+import org.apache.ivy.core.cache.RepositoryCacheManager;
 import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.apache.ivy.plugins.resolver.FileSystemResolver;
 import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.artifacts.dsl.FlatDirectoryArtifactRepository;
-import org.gradle.api.internal.artifacts.ivyservice.LocalFileRepositoryCacheManager;
+import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
 import org.gradle.api.internal.file.FileResolver;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 
-public class DefaultFlatDirArtifactRepository implements FlatDirectoryArtifactRepository, ArtifactRepositoryInternal {
+public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository implements FlatDirectoryArtifactRepository, ArtifactRepositoryInternal {
     private final FileResolver fileResolver;
-    private String name;
     private List<Object> dirs = new ArrayList<Object>();
+    private final RepositoryCacheManager localCacheManager;
 
-    public DefaultFlatDirArtifactRepository(FileResolver fileResolver) {
+    public DefaultFlatDirArtifactRepository(FileResolver fileResolver, RepositoryCacheManager localCacheManager) {
         this.fileResolver = fileResolver;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
+        this.localCacheManager = localCacheManager;
     }
 
     public Set<File> getDirs() {
@@ -47,27 +44,32 @@ public class DefaultFlatDirArtifactRepository implements FlatDirectoryArtifactRe
     }
 
     public void setDirs(Iterable<?> dirs) {
-        this.dirs = new ArrayList<Object>(Arrays.asList(dirs));
+        this.dirs = Lists.newArrayList(dirs);
+    }
+
+    public void dir(Object dir) {
+        dirs(dir);
     }
 
     public void dirs(Object... dirs) {
         this.dirs.addAll(Arrays.asList(dirs));
     }
 
-    public void createResolvers(Collection<DependencyResolver> resolvers) {
+    public DependencyResolver createResolver() {
         Set<File> dirs = getDirs();
         if (dirs.isEmpty()) {
             throw new InvalidUserDataException("You must specify at least one directory for a flat directory repository.");
         }
 
         FileSystemResolver resolver = new FileSystemResolver();
-        resolver.setName(name);
+        resolver.setName(getName());
         for (File root : dirs) {
             resolver.addArtifactPattern(root.getAbsolutePath() + "/[artifact]-[revision](-[classifier]).[ext]");
             resolver.addArtifactPattern(root.getAbsolutePath() + "/[artifact](-[classifier]).[ext]");
         }
         resolver.setValidate(false);
-        resolver.setRepositoryCacheManager(new LocalFileRepositoryCacheManager(name));
-        resolvers.add(resolver);
+        resolver.setRepositoryCacheManager(localCacheManager);
+        return resolver;
     }
+
 }

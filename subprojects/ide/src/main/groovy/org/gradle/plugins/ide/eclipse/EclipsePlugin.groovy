@@ -16,7 +16,8 @@
 package org.gradle.plugins.ide.eclipse
 
 import org.gradle.api.Project
-import org.gradle.api.internal.Instantiator
+import org.gradle.api.artifacts.Dependency
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.api.plugins.GroovyBasePlugin
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPlugin
@@ -30,6 +31,8 @@ import org.gradle.plugins.ide.eclipse.model.EclipseClasspath
 import org.gradle.plugins.ide.eclipse.model.EclipseModel
 import org.gradle.plugins.ide.internal.IdePlugin
 
+import javax.inject.Inject
+
 /**
  * <p>A plugin which generates Eclipse files.</p>
  *
@@ -41,7 +44,13 @@ class EclipsePlugin extends IdePlugin {
     static final String ECLIPSE_CP_TASK_NAME = "eclipseClasspath"
     static final String ECLIPSE_JDT_TASK_NAME = "eclipseJdt"
 
-    EclipseModel model = new EclipseModel()
+    private final Instantiator instantiator
+    EclipseModel model
+
+    @Inject
+    EclipsePlugin(Instantiator instantiator) {
+        this.instantiator = instantiator
+    }
 
     @Override protected String getLifecycleTaskName() {
         return 'eclipse'
@@ -51,7 +60,7 @@ class EclipsePlugin extends IdePlugin {
         lifecycleTask.description = 'Generates all Eclipse files.'
         cleanTask.description = 'Cleans all Eclipse files.'
 
-        project.extensions.eclipse = model
+        model = project.extensions.create("eclipse", EclipseModel)
 
         configureEclipseProject(project)
         configureEclipseClasspath(project)
@@ -108,7 +117,7 @@ class EclipsePlugin extends IdePlugin {
     }
 
     private void configureEclipseClasspath(Project project) {
-        model.classpath = project.services.get(Instantiator).newInstance(EclipseClasspath, project)
+        model.classpath = instantiator.newInstance(EclipseClasspath, project)
         model.classpath.conventionMapping.defaultOutputDir = { new File(project.projectDir, 'bin') }
 
         project.plugins.withType(JavaBasePlugin) {
@@ -133,6 +142,19 @@ class EclipsePlugin extends IdePlugin {
                     }
                     task.dependsOn {
                         project.sourceSets.main.output.dirs + project.sourceSets.test.output.dirs
+                    }
+                }
+
+                project.plugins.withType(ScalaBasePlugin) {
+                    classpath.containers 'org.scala-ide.sdt.launching.SCALA_CONTAINER'
+
+                    // exclude the dependencies already provided by SCALA_CONTAINER; prevents problems with Eclipse Scala plugin
+                    project.gradle.projectsEvaluated {
+                        def provided = ["scala-library", "scala-swing", "scala-dbc"]
+                        def dependencies = classpath.plusConfigurations.collectMany { it.allDependencies }.findAll { it.name in provided }
+                        if (!dependencies.empty) {
+                            classpath.minusConfigurations += project.configurations.detachedConfiguration(dependencies as Dependency[])
+                        }
                     }
                 }
             }

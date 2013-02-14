@@ -17,25 +17,22 @@
 package org.gradle.initialization
 
 import org.gradle.StartParameter
-import org.gradle.api.GradleException
-import org.gradle.api.InvalidUserDataException
 import org.gradle.api.initialization.ProjectDescriptor
 import org.gradle.api.internal.GradleInternal
 import org.gradle.api.internal.project.DefaultProject
 import org.gradle.api.internal.project.IProjectFactory
-import org.gradle.api.internal.project.IProjectRegistry
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.HelperUtil
 import org.gradle.util.JUnit4GroovyMockery
-import org.gradle.util.TemporaryFolder
 import org.jmock.integration.junit4.JMock
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.assertThat
-import static org.junit.Assert.fail
 
 /**
  * @author Hans Dockter
@@ -56,12 +53,12 @@ class InstantiatingBuildLoaderTest {
     ProjectInternal childProject
     GradleInternal build
     JUnit4GroovyMockery context = new JUnit4GroovyMockery()
-    @Rule public TemporaryFolder tmpDir = new TemporaryFolder();
+    @Rule public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
 
     @Before public void setUp()  {
         projectFactory = context.mock(IProjectFactory)
         buildLoader = new InstantiatingBuildLoader(projectFactory)
-        testDir = tmpDir.dir
+        testDir = tmpDir.testDirectory
         (rootProjectDir = new File(testDir, 'root')).mkdirs()
         (childProjectDir = new File(rootProjectDir, 'child')).mkdirs()
         startParameter.currentDir = rootProjectDir
@@ -100,39 +97,6 @@ class InstantiatingBuildLoaderTest {
         buildLoader.load(rootDescriptor, build)
 
         assertThat(rootProject.childProjects['child'], sameInstance(childProject))
-    }
-
-    @Test public void selectsDefaultProject() {
-        expectProjectsCreatedNoDefaultProject()
-
-        ProjectSpec selector = context.mock(ProjectSpec)
-        startParameter.defaultProjectSelector = selector
-        context.checking {
-            one(selector).selectProject(withParam(instanceOf(IProjectRegistry)))
-            will(returnValue(childProject))
-
-            one(build).setDefaultProject(childProject)
-        }
-
-        buildLoader.load(rootDescriptor, build)
-    }
-
-    @Test public void wrapsDefaultProjectSelectionException() {
-        expectProjectsCreatedNoDefaultProject()
-
-        ProjectSpec selector = context.mock(ProjectSpec)
-        startParameter.defaultProjectSelector = selector
-        context.checking {
-            one(selector).selectProject(withParam(instanceOf(IProjectRegistry)))
-            will(throwException(new InvalidUserDataException("<error>")))
-        }
-
-        try {
-            buildLoader.load(rootDescriptor, build)
-            fail()
-        } catch (GradleException e) {
-            assertThat(e.message, equalTo('Could not select the default project for this build. <error>'))
-        }
     }
 
     private def expectProjectsCreatedNoDefaultProject() {

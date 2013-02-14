@@ -16,7 +16,7 @@
 package org.gradle.listener
 
 import spock.lang.Specification
-import org.gradle.api.internal.Factory
+import org.gradle.internal.Factory
 import java.util.concurrent.Callable
 
 class LazyCreationProxyTest extends Specification {
@@ -49,5 +49,42 @@ class LazyCreationProxyTest extends Specification {
         1 * callable.call() >> 'b'
         0 * factory._
         0 * callable._
+    }
+
+    def "rethrows exception thrown by factory on creation"() {
+        def failure = new RuntimeException()
+        
+        given:
+        def proxy = new LazyCreationProxy<Callable<String>>(Callable, factory)
+        def source = proxy.source
+
+        when:
+        source.call()
+
+        then:
+        Exception e = thrown(Exception)
+        e == failure
+
+        and:
+        _ * factory.create() >> { throw failure }
+    }
+
+    def "rethrows checked exception thrown by method call on target object"() {
+        def failure = new IOException()
+
+        given:
+        def proxy = new LazyCreationProxy<Callable<String>>(Callable, factory)
+        def source = proxy.source
+        _ * factory.create() >> callable
+
+        when:
+        source.call()
+
+        then:
+        Exception e = thrown(Exception)
+        e == failure
+
+        and:
+        _ * callable.call() >> { throw failure }
     }
 }

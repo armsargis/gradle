@@ -16,15 +16,13 @@
 package org.gradle.api.internal.artifacts.repositories;
 
 import org.apache.ivy.plugins.resolver.DependencyResolver;
-import org.gradle.api.artifacts.dsl.ArtifactRepository;
-
-import java.util.Collection;
+import org.gradle.api.NamedDomainObjectCollection;
+import org.gradle.api.artifacts.repositories.ArtifactRepository;
 
 public interface ArtifactRepositoryInternal extends ArtifactRepository {
-    /**
-     * Creates the resolvers for this repository.
-     *
-     * @param resolvers The collection to add the resolvers for this repository.
-     */
-    void createResolvers(Collection<DependencyResolver> resolvers);
+
+    DependencyResolver createResolver();
+
+    void onAddToContainer(NamedDomainObjectCollection<ArtifactRepository> container);
+
 }

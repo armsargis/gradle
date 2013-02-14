@@ -17,9 +17,13 @@ package org.gradle.api.plugins;
 
 import groovy.lang.Closure;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.maven.*;
-import org.gradle.api.internal.Factory;
+import org.gradle.api.artifacts.maven.Conf2ScopeMapping;
+import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
+import org.gradle.api.artifacts.maven.MavenPom;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.publication.maven.internal.MavenFactory;
+import org.gradle.api.publication.maven.internal.MavenPomMetaInfoProvider;
+import org.gradle.internal.Factory;
 import org.gradle.util.ConfigureUtil;
 
 import java.io.File;
@@ -30,31 +34,18 @@ import java.util.Collections;
  * 
  * @author Hans Dockter
  */
-public class MavenPluginConvention {
+public class MavenPluginConvention implements MavenPomMetaInfoProvider {
     private final ProjectInternal project;
     private final MavenFactory mavenFactory;
     private Conf2ScopeMappingContainer conf2ScopeMappings;
-    private String pomDirName = "poms";
+    private Object pomDir;
 
-    public MavenPluginConvention(ProjectInternal project) {
+    public MavenPluginConvention(ProjectInternal project, MavenFactory mavenFactory) {
         this.project = project;
-        mavenFactory = project.getServices().get(MavenFactory.class);
+        this.mavenFactory = mavenFactory;
         conf2ScopeMappings = mavenFactory.createConf2ScopeMappingContainer(Collections.<Configuration, Conf2ScopeMapping>emptyMap());
     }
 
-    /**
-     * Returns the name of the directory to generate Maven POMs into, relative to the build directory.
-     */
-    public String getPomDirName() {
-        return pomDirName;
-    }
-
-    /**
-     * Sets the name of the directory to generate Maven POMs into, relative to the build directory.
-     */
-    public void setPomDirName(String pomDirName) {
-        this.pomDirName = pomDirName;
-    }
 
     /**
      * Returns the set of rules for how to map Gradle dependencies to Maven scopes.
@@ -72,8 +63,20 @@ public class MavenPluginConvention {
     /**
      * Returns the directory to generate Maven POMs into.
      */
-    public File getPomDir() {
-        return project.getFileResolver().withBaseDir(project.getBuildDir()).resolve(pomDirName);
+    public File getMavenPomDir() {
+        if (pomDir == null) {
+            return new File(project.getBuildDir(), "poms");
+        }
+        return project.getFileResolver().resolve(pomDir);
+    }
+
+    /**
+     * Sets the directory to generate Maven POMs into.
+     *
+     * @param pomDir The new POM directory. Evaluated as per {@link org.gradle.api.Project#file(Object)}.
+     */
+    public void setMavenPomDir(Object pomDir) {
+        this.pomDir = pomDir;
     }
 
     /**

@@ -17,29 +17,28 @@ package org.gradle.api.internal.file.copy
 
 import org.apache.tools.ant.filters.HeadFilter
 import org.apache.tools.ant.filters.StripJavaComments
+import org.gradle.api.Action
+import org.gradle.api.file.FileTree
 import org.gradle.api.file.RelativePath
-import org.gradle.util.TestFile
+import org.gradle.api.internal.file.FileResolver
+import org.gradle.api.specs.Spec
+import org.gradle.api.tasks.util.PatternSet
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.JUnit4GroovyMockery
-import org.gradle.util.TemporaryFolder
 import org.jmock.integration.junit4.JMock
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
-import org.apache.tools.zip.UnixStat
-import org.gradle.api.specs.Spec
-import org.gradle.api.tasks.util.PatternSet
-import org.gradle.api.file.FileTree
-import org.gradle.api.Action
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.api.file.CopySpec
 
 @RunWith(JMock)
 public class CopySpecImplTest {
 
-    @Rule public TemporaryFolder testDir = new TemporaryFolder();
-    private TestFile baseFile = testDir.dir
+    @Rule public TestNameTestDirectoryProvider testDir = new TestNameTestDirectoryProvider();
+    private TestFile baseFile = testDir.testDirectory
     private final JUnit4GroovyMockery context = new JUnit4GroovyMockery();
     private final FileResolver fileResolver = context.mock(FileResolver);
     private final CopySpecImpl spec = new CopySpecImpl(fileResolver)
@@ -107,15 +106,6 @@ public class CopySpecImplTest {
         assertThat(spec.childSpecs.size(), equalTo(2))
     }
     
-    @Test public void testFromSpec() {
-        CopySpecImpl other1 = new CopySpecImpl(fileResolver)
-        CopySpecImpl other2 = new CopySpecImpl(fileResolver)
-
-        spec.from other1, other2
-        assertTrue(spec.sourcePaths.empty)
-        assertThat(spec.childSpecs.size(), equalTo(2))
-    }
-
     @Test public void testWithSpecSource() {
         CopyActionImpl source = new CopyActionImpl(fileResolver, null)
 
@@ -329,9 +319,9 @@ public class CopySpecImplTest {
         assertThat(childSpec.allCopyActions, equalTo([parentAction, childAction]))
     }
 
-    @Test public void testDefaultPermissions() {
-        org.junit.Assert.assertEquals(UnixStat.DEFAULT_FILE_PERM, spec.fileMode)
-        org.junit.Assert.assertEquals(UnixStat.DEFAULT_DIR_PERM, spec.dirMode)
+    @Test public void testHasNoPermissionsByDefault() {
+        assert spec.fileMode == null
+        assert spec.dirMode == null
     }
 
     @Test public void testInheritsPermissionsFromParent() {

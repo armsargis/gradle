@@ -21,19 +21,25 @@ import org.gradle.api.plugins.announce.Announcer
 class Snarl implements Announcer {
     private static final float SNP_VERSION = 1.1f
     private static final String HEAD = "type=SNP#?version=" + SNP_VERSION
+    private final IconProvider iconProvider
+
+    Snarl(IconProvider iconProvider) {
+        this.iconProvider = iconProvider
+    }
 
     public void send(String title, String message) {
-        send("localhost", title, message)
+        send(InetAddress.getByName(null), title, message)
     }
 
-    public void send(Collection hosts, String title, String message) {
-        hosts.each { host ->
-            send(host, title, message)
+    public void send(InetAddress host, String title, String message) {
+        Socket socket
+        try {
+            socket = new Socket(host, 9887)
+        } catch (ConnectException e) {
+            // Snarl is not running
+            throw new AnnouncerUnavailableException("Snarl is not running on host $host.", e)
         }
-    }
-
-    public void send(String host, String title, String message) {
-        with(new Socket(InetAddress.getByName(host), 9887)) { sock ->
+        with(socket) { sock ->
             with(new PrintWriter(sock.getOutputStream(), true)) { out ->
                 out.println(formatMessage(title, message))
             }
@@ -47,7 +53,7 @@ class Snarl implements Announcer {
                 formatProperty("class", "alert"),
                 formatProperty("title", title),
                 formatProperty("text", message),
-                formatProperty("icon", null),
+                formatProperty("icon", iconProvider.getIcon(32, 32)?.absolutePath),
                 formatProperty("timeout", "10")]
 
         HEAD + properties.join('') + "\r\n"

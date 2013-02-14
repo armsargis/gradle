@@ -16,32 +16,43 @@
 
 package org.gradle.plugins.signing
 
-import org.gradle.integtests.fixtures.*
-import org.gradle.integtests.fixtures.internal.*
-import org.junit.*
+import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.Sample
+import org.gradle.integtests.fixtures.UsesSample
+import org.gradle.test.fixtures.maven.MavenRepository
+import org.junit.Rule
 
 class SigningSamplesSpec extends AbstractIntegrationSpec {
+    @Rule public final Sample mavenSample = new Sample(temporaryFolder)
 
-    @Rule public final Sample mavenSample = new Sample('signing/maven')
-    @Rule public final Sample conditionalSample = new Sample('signing/conditional')
-
+    @UsesSample('signing/maven')
     def "upload attaches signatures"() {
         given:
         sample mavenSample
 
-        expect:
-        succeeds "uploadPublished"
+        when:
+        run "uploadArchives"
+
+        then:
+        repo.module('gradle', 'maven', '1.0').assertArtifactsPublished('maven-1.0.pom', 'maven-1.0.pom.asc', 'maven-1.0.jar', 'maven-1.0.jar.asc')
     }
 
+    @UsesSample('signing/conditional')
     def "conditional signing"() {
         given:
-        sample conditionalSample
+        sample mavenSample
 
-        expect:
-        succeeds "uploadPublished"
-        
+        when:
+        run "uploadArchives"
+
+        then:
+        ":signArchives" in skippedTasks
+
         and:
-        !(":signArchives" in executedTasks)
+        repo.module('gradle', 'conditional', '1.0-SNAPSHOT').assertArtifactsPublished('conditional-1.0-SNAPSHOT.pom', 'conditional-1.0-SNAPSHOT.jar')
     }
 
+    MavenRepository getRepo() {
+        return maven(mavenSample.dir.file("build/repo"))
+    }
 }

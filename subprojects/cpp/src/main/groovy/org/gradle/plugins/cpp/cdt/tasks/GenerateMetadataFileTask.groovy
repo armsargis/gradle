@@ -15,9 +15,10 @@
  */
 package org.gradle.plugins.cpp.cdt.tasks
 
-import org.gradle.api.internal.Factory
+import org.gradle.api.internal.ClosureBackedAction
+import org.gradle.internal.Factory
 import org.gradle.listener.ActionBroadcast
-
+import org.gradle.plugins.cpp.cdt.model.CprojectSettings
 import org.gradle.plugins.ide.api.GeneratorTask
 import org.gradle.plugins.ide.internal.generator.generator.PersistableConfigurationObject
 import org.gradle.plugins.ide.internal.generator.generator.PersistableConfigurationObjectGenerator
@@ -26,6 +27,7 @@ class GenerateMetadataFileTask<T extends PersistableConfigurationObject> extends
 
     Factory<T> factory
     ActionBroadcast<T> configures = new ActionBroadcast<T>()
+    CprojectSettings settings
 
     GenerateMetadataFileTask() {
         generator = new PersistableConfigurationObjectGenerator() {
@@ -44,6 +46,6 @@ class GenerateMetadataFileTask<T extends PersistableConfigurationObject> extends
     }
 
     void onConfigure(Closure configure) {
-        configures.add(configure)
+        configures.add(new ClosureBackedAction(configure))
     }
 }

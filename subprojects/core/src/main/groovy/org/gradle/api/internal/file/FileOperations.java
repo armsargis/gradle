@@ -21,8 +21,8 @@ import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.ConfigurableFileTree;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.FileTree;
+import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.WorkResult;
-import org.gradle.process.ExecResult;
 
 import java.io.File;
 import java.net.URI;
@@ -47,7 +47,10 @@ public interface FileOperations {
 
     ConfigurableFileTree fileTree(Map<String, ?> args);
 
+    @Deprecated
     ConfigurableFileTree fileTree(Closure closure);
+
+    ConfigurableFileTree fileTree(Object baseDir, Closure closure);
 
     FileTree zipTree(Object zipPath);
 
@@ -61,7 +64,5 @@ public interface FileOperations {
 
     boolean delete(Object... paths);
 
-    ExecResult javaexec(Closure cl);
-
-    ExecResult exec(Closure cl);
+    ResourceHandler getResources();
 }

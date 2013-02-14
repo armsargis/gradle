@@ -17,27 +17,41 @@ package org.gradle.api.plugins.sonar
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.internal.Instantiator
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.util.GradleVersion
-import org.gradle.util.Jvm
+import org.gradle.internal.jvm.Jvm
 import org.gradle.api.plugins.sonar.model.*
 
+import javax.inject.Inject
+
 /**
- * A {@link Plugin} for integrating with <a href="http://www.sonarsource.org">Sonar</a>, a web-based platform
- * for managing code quality. Adds a task named <tt>sonarAnalyze</tt> of type {@link SonarAnalyze} that performs the code
- * analysis. Further adds a model object named <tt>sonar</tt> of type {@type SonarRootModel} that holds all
- * configuration information. By default, all Java sources in the main source set will be analyzed.
+ * A plugin for integrating with <a href="http://www.sonarsource.org">Sonar</a>,
+ * a web-based platform for managing code quality. Adds a task named <tt>sonarAnalyze</tt>
+ * that analyzes the project to which the plugin is applied and its subprojects.
+ * The results are stored in the Sonar database.
+ *
+ * <p>For more information, see the
+ * <a href="http://gradle.org/current/docs/userguide/sonar_plugin.html">Sonar Plugin</a>
+ * chapter in the Gradle user guide.
+ *
+ * @see SonarAnalyze
+ * @see SonarRootModel
+ * @see SonarProjectModel
  */
 class SonarPlugin implements Plugin<ProjectInternal> {
     static final String SONAR_ANALYZE_TASK_NAME = "sonarAnalyze"
 
-    private Instantiator instantiator
+    private final Instantiator instantiator
+
+    @Inject
+    SonarPlugin(Instantiator instantiator) {
+        this.instantiator = instantiator
+    }
 
     void apply(ProjectInternal project) {
-        instantiator = project.services.get(Instantiator)
         def task = configureSonarTask(project)
         def model = configureSonarRootModel(project)
         task.rootModel = model
@@ -50,8 +64,7 @@ class SonarPlugin implements Plugin<ProjectInternal> {
     }
 
     private SonarRootModel configureSonarRootModel(Project project) {
-        def model = instantiator.newInstance(SonarRootModel)
-        project.extensions.sonar = model
+        def model = project.extensions.create("sonar", SonarRootModel)
         model.conventionMapping.with {
             bootstrapDir = { new File(project.buildDir, "sonar") }
             gradleVersion = { GradleVersion.current().version }
@@ -81,10 +94,9 @@ class SonarPlugin implements Plugin<ProjectInternal> {
 
     private void configureSubprojects(Project parentProject, SonarModel parentModel) {
         for (childProject in parentProject.childProjects.values()) {
-            def childModel = instantiator.newInstance(SonarProjectModel)
+            def childModel = childProject.extensions.create("sonar", SonarProjectModel)
             parentModel.childModels << childModel
 
-            childProject.extensions.sonar = childModel
             childModel.project = configureSonarProject(childProject)
 
             configureSubprojects(childProject, childModel)
@@ -101,7 +113,7 @@ class SonarPlugin implements Plugin<ProjectInternal> {
             version = { project.version.toString() }
             baseDir = { project.projectDir }
             workDir = { new File(project.buildDir, "sonar") }
-            dynamicAnalysis = { "false" }
+            dynamicAnalysis = { "reuseReports" }
         }
 
         def javaSettings = instantiator.newInstance(SonarJavaSettings)
@@ -130,7 +142,6 @@ class SonarPlugin implements Plugin<ProjectInternal> {
                     }
                     libraries
                 }
-                dynamicAnalysis = { "reuseReports" }
                 testReportPath = { project.test.testResultsDir }
                 language = { "java" }
             }

@@ -16,7 +16,7 @@
 
 package org.gradle.plugins.ide.api
 
-import org.gradle.api.internal.XmlTransformer
+import org.gradle.api.internal.xml.XmlTransformer
 
 /**
  * Models the generation/parsing/merging capabilities. Adds xml-related hooks.
@@ -35,7 +35,7 @@ class XmlFileContentMerger extends FileContentMerger {
 
     /**
      * Adds a closure to be called when the file has been created. The XML is passed to the closure as a
-     * parameter in form of a {@link org.gradle.api.artifacts.maven.XmlProvider}. The closure can modify the XML before
+     * parameter in form of a {@link org.gradle.api.XmlProvider}. The closure can modify the XML before
      * it is written to the output file.
      * <p>
      * For examples see docs for {@link org.gradle.plugins.ide.eclipse.model.EclipseProject} or {@link org.gradle.plugins.ide.idea.model.IdeaProject} and others.

@@ -18,18 +18,13 @@ package org.gradle.api.internal;
 
 import groovy.lang.Closure;
 import groovy.lang.MissingPropertyException;
+import groovy.util.ObservableList;
 import org.codehaus.groovy.runtime.InvokerInvocationException;
 import org.gradle.api.*;
 import org.gradle.api.internal.file.TemporaryFileProvider;
-import org.gradle.api.internal.plugins.DefaultConvention;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.internal.project.ServiceRegistry;
-import org.gradle.api.internal.tasks.DefaultTaskDependency;
-import org.gradle.api.internal.tasks.TaskDependencyInternal;
-import org.gradle.api.internal.tasks.TaskExecuter;
-import org.gradle.api.internal.tasks.TaskStateInternal;
+import org.gradle.api.internal.tasks.*;
 import org.gradle.api.internal.tasks.execution.TaskValidator;
-import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.logging.LoggingManager;
@@ -39,16 +34,21 @@ import org.gradle.api.specs.AndSpec;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.api.tasks.TaskInputs;
+import org.gradle.api.tasks.TaskInstantiationException;
 import org.gradle.api.tasks.TaskState;
+import org.gradle.internal.Factory;
+import org.gradle.internal.reflect.Instantiator;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.StandardOutputCapture;
 import org.gradle.util.ConfigureUtil;
-import org.gradle.util.DeprecationLogger;
+import org.gradle.util.GFileUtils;
 
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 
@@ -70,7 +70,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
 
     private DefaultTaskDependency dependencies;
 
-    private DynamicObjectHelper dynamicObjectHelper;
+    private ExtensibleDynamicObject extensibleDynamicObject;
 
     private String description;
 
@@ -92,29 +92,42 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
 
     private List<TaskValidator> validators = new ArrayList<TaskValidator>();
 
+    private final TaskStatusNagger taskStatusNagger;
+    private ObservableList observableActionList;
+
     protected AbstractTask() {
         this(taskInfo());
     }
 
     private static TaskInfo taskInfo() {
-        TaskInfo taskInfo = nextInstance.get();
-        assert taskInfo != null;
-        return taskInfo;
+        return nextInstance.get();
     }
 
     private AbstractTask(TaskInfo taskInfo) {
+        if (taskInfo == null) {
+            throw new TaskInstantiationException(String.format("Task of type '%s' has been instantiated directly which is not supported. Tasks can only be created using the DSL.", getClass().getName()));
+        }
+
         this.project = taskInfo.project;
         this.name = taskInfo.name;
         assert project != null;
         assert name != null;
         path = project.absoluteProjectPath(name);
         state = new TaskStateInternal(toString());
-        dynamicObjectHelper = new DynamicObjectHelper(this, new DefaultConvention());
         dependencies = new DefaultTaskDependency(project.getTasks());
         services = project.getServices().createFor(this);
+        extensibleDynamicObject = new ExtensibleDynamicObject(this, getServices().get(Instantiator.class));
+        taskStatusNagger = services.get(TaskStatusNagger.class);
         outputs = services.get(TaskOutputsInternal.class);
         inputs = services.get(TaskInputs.class);
         executer = services.get(TaskExecuter.class);
+
+        observableActionList = new ObservableList(actions);
+        observableActionList.addPropertyChangeListener(new PropertyChangeListener() {
+            public void propertyChange(PropertyChangeEvent evt) {
+                taskStatusNagger.nagAboutMutatingListIfTaskNotInConfigurableState("Task.getActions()", evt);
+            }
+        });
         loggingManager = services.get(LoggingManagerInternal.class);
     }
 
@@ -134,6 +147,10 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public TaskState getState() {
+        return state;
+    }
+
+    public TaskStateInternal getStateInternal() {
         return state;
     }
 
@@ -158,11 +175,19 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public List<Action<? super Task>> getActions() {
-        return actions;
+        return observableActionList;
     }
 
-    public void setActions(List<Action<? super Task>> actions) {
-        this.actions = actions;
+    public void setActions(final List<Action<? super Task>> actions) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.setActions(Actions<Task>)");
+        taskStatusNagger.whileDisabled(new Runnable() {
+            public void run() {
+                deleteAllActions();
+                for (Action<? super Task> action : actions) {
+                    doLast(action);
+                }
+            }
+        });
     }
 
     public TaskDependencyInternal getTaskDependencies() {
@@ -174,22 +199,27 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public void setDependsOn(Iterable<?> dependsOn) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.setDependsOn(Iterable)");
         dependencies.setValues(dependsOn);
     }
 
     public void onlyIf(Closure onlyIfClosure) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.onlyIf(Closure)");
         this.onlyIfSpec = this.onlyIfSpec.and(onlyIfClosure);
     }
 
     public void onlyIf(Spec<? super Task> onlyIfSpec) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.onlyIf(Spec)");
         this.onlyIfSpec = this.onlyIfSpec.and(onlyIfSpec);
     }
 
     public void setOnlyIf(Spec<? super Task> spec) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.setOnlyIf(Spec)");
         onlyIfSpec = createNewOnlyIfSpec().and(spec);
     }
 
     public void setOnlyIf(Closure onlyIfClosure) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.setOnlyIf(Closure)");
         onlyIfSpec = createNewOnlyIfSpec().and(onlyIfClosure);
     }
 
@@ -222,6 +252,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public void setEnabled(boolean enabled) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.setEnabled(boolean)");
         this.enabled = enabled;
     }
 
@@ -230,13 +261,18 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public Task deleteAllActions() {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.deleteAllActions()");
         actions.clear();
         return this;
     }
 
     public final void execute() {
-        executer.execute(this, state);
+        executeWithoutThrowingTaskFailure();
         state.rethrowFailure();
+    }
+
+    public void executeWithoutThrowingTaskFailure() {
+        executer.execute(this, state);
     }
 
     public TaskExecuter getExecuter() {
@@ -248,23 +284,26 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public Task dependsOn(Object... paths) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.dependsOn(Object...)");
         dependencies.add(paths);
         return this;
     }
 
     public Task doFirst(Action<? super Task> action) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.doFirst(Action)");
         if (action == null) {
             throw new InvalidUserDataException("Action must not be null!");
         }
-        actions.add(0, action);
+        actions.add(0, wrap(action));
         return this;
     }
 
     public Task doLast(Action<? super Task> action) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.doLast(Action)");
         if (action == null) {
             throw new InvalidUserDataException("Action must not be null!");
         }
-        actions.add(action);
+        actions.add(wrap(action));
         return this;
     }
 
@@ -285,18 +324,6 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
         return buildLogger;
     }
 
-    public Task disableStandardOutputCapture() {
-        DeprecationLogger.nagUser("Task.disableStandardOutputCapture()");
-        loggingManager.disableStandardOutputCapture();
-        return this;
-    }
-
-    public Task captureStandardOutput(LogLevel level) {
-        DeprecationLogger.nagUser("Task.captureStandardOutput()", "getLogging().captureStandardOutput()");
-        loggingManager.captureStandardOutput(level);
-        return this;
-    }
-
     public LoggingManager getLogging() {
         return loggingManager;
     }
@@ -305,28 +332,20 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
         return loggingManager;
     }
 
-    public Map<String, Object> getAdditionalProperties() {
-        return dynamicObjectHelper.getAdditionalProperties();
-    }
-
-    public DynamicObjectHelper getDynamicObjectHelper() {
-        return dynamicObjectHelper;
-    }
-
     public Object property(String propertyName) throws MissingPropertyException {
-        return dynamicObjectHelper.getProperty(propertyName);
+        return extensibleDynamicObject.getProperty(propertyName);
     }
 
     public boolean hasProperty(String propertyName) {
-        return dynamicObjectHelper.hasProperty(propertyName);
+        return extensibleDynamicObject.hasProperty(propertyName);
     }
 
     public void setProperty(String name, Object value) {
-        dynamicObjectHelper.setProperty(name, value);
+        extensibleDynamicObject.setProperty(name, value);
     }
 
     public Convention getConvention() {
-        return dynamicObjectHelper.getConvention();
+        return extensibleDynamicObject.getConvention();
     }
 
     public ExtensionContainer getExtensions() {
@@ -334,7 +353,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public DynamicObject getAsDynamicObject() {
-        return dynamicObjectHelper;
+        return extensibleDynamicObject;
     }
 
     public String getDescription() {
@@ -376,23 +395,30 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     public Task doFirst(Closure action) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.doFirst(Closure)");
         if (action == null) {
             throw new InvalidUserDataException("Action must not be null!");
         }
-        doFirst(convertClosureToAction(action));
+        actions.add(0, convertClosureToAction(action));
         return this;
     }
 
     public Task doLast(Closure action) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.doLast(Closure)");
         if (action == null) {
             throw new InvalidUserDataException("Action must not be null!");
         }
-        doLast(convertClosureToAction(action));
+        actions.add(convertClosureToAction(action));
         return this;
     }
 
-    public Task leftShift(Closure action) {
-        return doLast(action);
+    public Task leftShift(final Closure action) {
+        taskStatusNagger.nagIfTaskNotInConfigurableState("Task.leftShit(Closure)");
+        if (action == null) {
+            throw new InvalidUserDataException("Action must not be null!");
+        }
+        actions.add(taskStatusNagger.leftShift(convertClosureToAction(action)));
+        return this;
     }
 
     public Task configure(Closure closure) {
@@ -401,8 +427,17 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
 
     public File getTemporaryDir() {
         File dir = getServices().get(TemporaryFileProvider.class).newTemporaryFile(getName());
-        dir.mkdirs();
+        GFileUtils.mkdirs(dir);
         return dir;
+    }
+
+    // note: this method is on TaskInternal
+    public Factory<File> getTemporaryDirFactory() {
+        return new Factory<File>() {
+            public File create() {
+                return getTemporaryDir();
+            }
+        };
     }
 
     public void addValidator(TaskValidator validator) {
@@ -414,9 +449,11 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     }
 
     private Action<Task> convertClosureToAction(Closure actionClosure) {
-        actionClosure.setDelegate(this);
-        actionClosure.setResolveStrategy(Closure.DELEGATE_FIRST);
         return new ClosureTaskAction(actionClosure);
+    }
+
+    private Action<Task> wrap(final Action<? super Task> action) {
+        return new TaskActionWrapper(action);
     }
 
     private static class TaskInfo {
@@ -437,6 +474,10 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
         }
 
         public void execute(Task task) {
+            closure.setDelegate(task);
+            closure.setResolveStrategy(Closure.DELEGATE_FIRST);
+            ClassLoader original = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(closure.getClass().getClassLoader());
             try {
                 if (closure.getMaximumNumberOfParameters() == 0) {
                     closure.call();
@@ -449,8 +490,27 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
                     throw (RuntimeException) cause;
                 }
                 throw e;
+            } finally {
+                Thread.currentThread().setContextClassLoader(original);
             }
         }
     }
 
+    private static class TaskActionWrapper implements Action<Task> {
+        private final Action<? super Task> action;
+
+        public TaskActionWrapper(Action<? super Task> action) {
+            this.action = action;
+        }
+
+        public void execute(Task task) {
+            ClassLoader original = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(action.getClass().getClassLoader());
+            try {
+                action.execute(task);
+            } finally {
+                Thread.currentThread().setContextClassLoader(original);
+            }
+        }
+    }
 }

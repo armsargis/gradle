@@ -15,14 +15,13 @@
  */
 package org.gradle.plugins.ide.eclipse.model.internal
 
-import org.gradle.api.artifacts.Dependency
-import org.gradle.api.artifacts.ExternalDependency
-import org.gradle.api.artifacts.SelfResolvingDependency
+import org.gradle.api.artifacts.Configuration
+import org.gradle.plugins.ide.eclipse.EclipsePlugin
 import org.gradle.plugins.ide.eclipse.model.EclipseWtpComponent
 import org.gradle.plugins.ide.eclipse.model.WbDependentModule
 import org.gradle.plugins.ide.eclipse.model.WbResource
 import org.gradle.plugins.ide.eclipse.model.WtpComponent
-import org.gradle.api.artifacts.Configuration
+import org.gradle.plugins.ide.internal.IdeDependenciesExtractor
 
 /**
  * @author Hans Dockter
@@ -30,7 +29,7 @@ import org.gradle.api.artifacts.Configuration
 class WtpComponentFactory {
     void configure(EclipseWtpComponent wtp, WtpComponent component) {
         def entries = getEntriesFromSourceDirs(wtp)
-        entries.addAll(wtp.resources)
+        entries.addAll(wtp.resources.findAll { wtp.project.file(it.sourcePath).isDirectory() } )
         entries.addAll(wtp.properties)
         // for ear files root deps are NOT transitive; wars don't use root deps so this doesn't hurt them
         // TODO: maybe do this in a more explicit way, via config or something
@@ -65,7 +64,8 @@ class WtpComponentFactory {
         }
 
         allProjects.collect { project ->
-            new WbDependentModule(deployPath, "module:/resource/" + project.name + "/" + project.name)
+            def moduleName = project.plugins.hasPlugin(EclipsePlugin) ? project.eclipse.project.name : project.name
+            new WbDependentModule(deployPath, "module:/resource/" + moduleName + "/" + moduleName)
         }
     }
 
@@ -84,20 +84,17 @@ class WtpComponentFactory {
 
     // must NOT include transitive library dependencies
     private Set getEntriesFromLibraries(Set plusConfigurations, Set minusConfigurations, EclipseWtpComponent wtp, String deployPath) {
-        Set declaredDependencies = getDependencies(plusConfigurations, minusConfigurations,
-                { it instanceof ExternalDependency})
+        def extractor = new IdeDependenciesExtractor()
+        //below is not perfect because we're skipping the unresolved dependencies completely
+        //however, it should be better anyway. Sometime soon we will hopefully change the wtp component stuff
+        def externals = extractor.resolvedExternalDependencies(plusConfigurations, minusConfigurations)
+        def locals = extractor.extractLocalFileDependencies(plusConfigurations, minusConfigurations)
 
-        Set libFiles = wtp.project.configurations.detachedConfiguration((declaredDependencies as Dependency[])).files +
-                getSelfResolvingFiles(getDependencies(plusConfigurations, minusConfigurations,
-                        { it instanceof SelfResolvingDependency && !(it instanceof org.gradle.api.artifacts.ProjectDependency)}))
+        def libFiles = (externals + locals)*.file
 
         libFiles.collect { file ->
             createWbDependentModuleEntry(file, wtp.fileReferenceFactory, deployPath)
         }
-    }
-
-    private LinkedHashSet getSelfResolvingFiles(LinkedHashSet<SelfResolvingDependency> dependencies) {
-        dependencies.collect { it.resolve() }.flatten() as LinkedHashSet
     }
 
     private WbDependentModule createWbDependentModuleEntry(File file, FileReferenceFactory fileReferenceFactory, String deployPath) {

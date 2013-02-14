@@ -19,9 +19,25 @@ package org.gradle.tooling;
  * A handler for an asynchronous operation which returns an object of type T.
  *
  * @param <T> The result type.
+ * @since 1.0-milestone-3
  */
 public interface ResultHandler<T> {
+
+    /**
+     * Handles successful completion of the operation.
+     *
+     * @param result the result
+     * @since 1.0-milestone-3
+     */
     void onComplete(T result);
 
+    /**
+     * Handles failures. A failure happens when the target Gradle version does not support
+     * the features required to build this model. For example, when you have configured the long running operation with a settings
+     *  like: {@link LongRunningOperation#setStandardInput(java.io.InputStream)}, {@link LongRunningOperation#setJavaHome(java.io.File)}, {@link LongRunningOperation#setJvmArguments(String...)}
+     *  but those settings are not supported on the target Gradle.
+     * @param failure the failure
+     * @since 1.0-milestone-3
+     */
     void onFailure(GradleConnectionException failure);
 }

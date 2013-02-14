@@ -18,9 +18,9 @@ package org.gradle.logging.internal;
 
 import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.StandardOutputListener;
+import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.Stoppable;
 import org.gradle.logging.LoggingManagerInternal;
-import org.gradle.messaging.concurrent.CompositeStoppable;
-import org.gradle.messaging.concurrent.Stoppable;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -66,7 +66,7 @@ public class DefaultLoggingManager implements LoggingManagerInternal {
 
     public DefaultLoggingManager stop() {
         try {
-            new CompositeStoppable(loggingSystem, stdOutLoggingSystem, stdErrLoggingSystem).stop();
+            CompositeStoppable.stoppable(loggingSystem, stdOutLoggingSystem, stdErrLoggingSystem).stop();
             for (StandardOutputListener stdoutListener : stdoutListeners) {
                 loggingOutput.removeStandardOutputListener(stdoutListener);
             }
@@ -95,10 +95,6 @@ public class DefaultLoggingManager implements LoggingManagerInternal {
         return stdOutLoggingSystem.level;
     }
 
-    public boolean isStandardOutputCaptureEnabled() {
-        return getStandardOutputCaptureLevel() != null;
-    }
-
     public DefaultLoggingManager captureStandardOutput(LogLevel level) {
         stdOutLoggingSystem.setLevel(level);
         return this;
@@ -106,12 +102,6 @@ public class DefaultLoggingManager implements LoggingManagerInternal {
 
     public DefaultLoggingManager captureStandardError(LogLevel level) {
         stdErrLoggingSystem.setLevel(level);
-        return this;
-    }
-
-    public DefaultLoggingManager disableStandardOutputCapture() {
-        stdOutLoggingSystem.disable();
-        stdErrLoggingSystem.disable();
         return this;
     }
 
@@ -155,8 +145,12 @@ public class DefaultLoggingManager implements LoggingManagerInternal {
         }
     }
 
-    public void colorStdOutAndStdErr(boolean colorOutput) {
-        loggingOutput.colorStdOutAndStdErr(colorOutput);
+    public void attachConsole(boolean colorOutput) {
+        loggingOutput.attachConsole(colorOutput);
+    }
+
+    public void addStandardOutputAndError() {
+        loggingOutput.addStandardOutputAndError();
     }
 
     private static class StartableLoggingSystem implements Stoppable {

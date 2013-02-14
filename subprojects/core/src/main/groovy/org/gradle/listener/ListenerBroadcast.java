@@ -16,10 +16,10 @@
 
 package org.gradle.listener;
 
-import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Transformer;
-import org.gradle.messaging.dispatch.*;
+import org.gradle.messaging.dispatch.Dispatch;
+import org.gradle.messaging.dispatch.MethodInvocation;
+import org.gradle.messaging.dispatch.ProxyDispatchAdapter;
 
 /**
  * <p>Manages a set of listeners of type T. Provides an implementation of T which can be used to broadcast to all
@@ -30,25 +30,15 @@ import org.gradle.messaging.dispatch.*;
  *
  * @param <T> The listener type.
  */
-public class ListenerBroadcast<T> implements StoppableDispatch<MethodInvocation> {
+public class ListenerBroadcast<T> implements Dispatch<MethodInvocation> {
     private final ProxyDispatchAdapter<T> source;
     private final BroadcastDispatch<T> broadcast;
     private final Class<T> type;
-    private final StoppableDispatch<MethodInvocation> dispatch;
 
     public ListenerBroadcast(Class<T> type) {
-        this(type, new Transformer<StoppableDispatch<MethodInvocation>>() {
-            public StoppableDispatch<MethodInvocation> transform(StoppableDispatch<MethodInvocation> original) {
-                return original;
-            }
-        });
-    }
-
-    protected ListenerBroadcast(Class<T> type, Transformer<StoppableDispatch<MethodInvocation>> transformer) {
         this.type = type;
         broadcast = new BroadcastDispatch<T>(type);
-        dispatch = transformer.transform(broadcast);
-        source = new ProxyDispatchAdapter<T>(type, dispatch);
+        source = new ProxyDispatchAdapter<T>(broadcast, type);
     }
 
     /**
@@ -106,13 +96,6 @@ public class ListenerBroadcast<T> implements StoppableDispatch<MethodInvocation>
     public void add(Dispatch<MethodInvocation> dispatch) {
         broadcast.add(dispatch);
     }
-    
-    /**
-     * Adds a closure to be notified when the given method is called.
-     */
-    public void add(String methodName, Closure closure) {
-        broadcast.add(methodName, closure);
-    }
 
     /**
      * Adds an action to be executed when the given method is called.
@@ -147,10 +130,6 @@ public class ListenerBroadcast<T> implements StoppableDispatch<MethodInvocation>
      * @param event The event
      */
     public void dispatch(MethodInvocation event) {
-        dispatch.dispatch(event);
-    }
-
-    public void stop() {
-        dispatch.stop();
+        broadcast.dispatch(event);
     }
 }

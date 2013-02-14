@@ -1,0 +1,10 @@
+dependencies {
+    groovy libraries.groovy
+    compile project(':core')
+    compile 'com.googlecode.jatl:jatl:0.2.2'
+
+    testCompile libraries.jsoup
+    integTestRuntime project(':codeQuality')
+}
+
+useTestFixtures()

@@ -17,9 +17,9 @@ package org.gradle.integtests
 
 import org.gradle.foundation.ProjectView
 import org.gradle.foundation.TaskView
+import org.gradle.foundation.TestUtility
 import org.gradle.gradleplugin.foundation.GradlePluginLord
-import org.gradle.integtests.fixtures.GradleDistribution
-import org.gradle.integtests.fixtures.GradleDistributionExecuter
+import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.openapi.external.foundation.ProjectVersion1
 import org.gradle.openapi.wrappers.foundation.GradleInterfaceWrapperVersion1
@@ -27,15 +27,14 @@ import org.junit.Assert
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+
 import java.util.concurrent.TimeUnit
-import org.gradle.foundation.TestUtility
-import org.gradle.util.TestFile
 
 /**
  This tests the multiproject sample with the GradleView mechanism.
  @author mhunsicker
  */
-class MultiprojectProjectAndTaskListIntegrationTest {
+class MultiprojectProjectAndTaskListIntegrationTest extends AbstractIntegrationTest {
 
     static final String JAVA_PROJECT_NAME = 'javaproject'
     static final String SHARED_NAME = 'shared'
@@ -44,15 +43,14 @@ class MultiprojectProjectAndTaskListIntegrationTest {
     static final String SERVICES_NAME = 'services'
     static final String WEBAPP_PATH = "$SERVICES_NAME/$WEBAPP_NAME" as String
 
-    private TestFile javaprojectDir
-
-    @Rule public final GradleDistribution dist = new GradleDistribution()
-    @Rule public final GradleDistributionExecuter executer = new GradleDistributionExecuter()
-    @Rule public final Sample sample = new Sample('java/multiproject')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'java/multiproject')
+    GradlePluginLord gradlePluginLord = new GradlePluginLord()
 
     @Before
     void setUp() {
-        javaprojectDir = sample.getDir()
+        gradlePluginLord.setCurrentDirectory(sample.dir);
+        gradlePluginLord.setGradleHomeDirectory(distribution.gradleHomeDir);
+        gradlePluginLord.addCommandLineArgumentAlteringListener(new ExtraTestCommandLineOptionsListener(executer.gradleUserHomeDir))
     }
 
     /*
@@ -67,10 +65,6 @@ class MultiprojectProjectAndTaskListIntegrationTest {
 
     @Test
     public void multiProjectjavaProjectSample() {
-        GradlePluginLord gradlePluginLord = new GradlePluginLord();
-        gradlePluginLord.setCurrentDirectory(javaprojectDir);
-        gradlePluginLord.setGradleHomeDirectory(dist.gradleHomeDir);
-
         //refresh the projects and wait. This will throw an exception if it fails.
         TestUtility.refreshProjectsBlocking(gradlePluginLord, 80, TimeUnit.SECONDS);
 
@@ -112,10 +106,6 @@ class MultiprojectProjectAndTaskListIntegrationTest {
    @Test
    public void testOpenAPIWrapperProjectAndTaskList()
    {
-        GradlePluginLord gradlePluginLord = new GradlePluginLord();
-        gradlePluginLord.setCurrentDirectory(javaprojectDir);
-        gradlePluginLord.setGradleHomeDirectory(dist.gradleHomeDir);
-
         GradleInterfaceWrapperVersion1 wrapper = new GradleInterfaceWrapperVersion1( gradlePluginLord );
 
         //the rest of this uses the open API mechanism to access the projects and tasks
@@ -167,10 +157,6 @@ class MultiprojectProjectAndTaskListIntegrationTest {
    @Test
    public void testSubProjectFromFullPath()
    {
-      GradlePluginLord gradlePluginLord = new GradlePluginLord();
-      gradlePluginLord.setCurrentDirectory(javaprojectDir);
-      gradlePluginLord.setGradleHomeDirectory(dist.gradleHomeDir);
-
       //refresh the projects and wait. This will throw an exception if it fails.
       TestUtility.refreshProjectsBlocking(gradlePluginLord, 80, TimeUnit.SECONDS);
 
@@ -200,10 +186,6 @@ class MultiprojectProjectAndTaskListIntegrationTest {
    @Test
    public void testGetTaskFromFullPath()
    {
-      GradlePluginLord gradlePluginLord = new GradlePluginLord();
-      gradlePluginLord.setCurrentDirectory(javaprojectDir);
-      gradlePluginLord.setGradleHomeDirectory(dist.gradleHomeDir);
-
       //refresh the projects and wait. This will throw an exception if it fails.
       TestUtility.refreshProjectsBlocking(gradlePluginLord, 100, TimeUnit.SECONDS);
 

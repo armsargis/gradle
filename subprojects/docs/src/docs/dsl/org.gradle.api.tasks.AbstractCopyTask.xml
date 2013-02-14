@@ -26,11 +26,15 @@
             </tr>
             <tr>
                 <td>dirMode</td>
-                <td><literal>0755</literal></td>
+                <td><literal>null</literal></td>
             </tr>
             <tr>
                 <td>fileMode</td>
-                <td><literal>0644</literal></td>
+                <td><literal>null</literal></td>
+            </tr>
+            <tr>
+                <td>includeEmptyDirs</td>
+                <td><literal>true</literal></td>
             </tr>
         </table>
     </section>

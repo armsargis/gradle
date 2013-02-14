@@ -24,11 +24,15 @@ import org.gradle.api.tasks.TaskState;
 import org.gradle.logging.ProgressLogger;
 import org.gradle.logging.ProgressLoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * A listener which logs the execution of tasks.
  */
 public class TaskExecutionLogger implements TaskExecutionListener {
-    private ProgressLogger currentTask;
+    // TODO:PARALLEL Seems to be some thread-safety issues here (get 'failed' logged for wrong task)
+    private final Map<Task, ProgressLogger> currentTasks = new HashMap<Task, ProgressLogger>();
     private final ProgressLoggerFactory progressLoggerFactory;
 
     public TaskExecutionLogger(ProgressLoggerFactory progressLoggerFactory) {
@@ -36,18 +40,21 @@ public class TaskExecutionLogger implements TaskExecutionListener {
     }
 
     public void beforeExecute(Task task) {
-        assert currentTask == null;
-        currentTask = progressLoggerFactory.newOperation(TaskExecutionLogger.class);
+        assert !currentTasks.containsKey(task);
+
+        ProgressLogger currentTask = progressLoggerFactory.newOperation(TaskExecutionLogger.class);
         String displayName = getDisplayName(task);
         currentTask.setDescription(String.format("Execute %s", displayName));
         currentTask.setShortDescription(displayName);
         currentTask.setLoggingHeader(displayName);
         currentTask.started();
+        currentTasks.put(task, currentTask);
     }
 
     public void afterExecute(Task task, TaskState state) {
-        currentTask.completed(state.getSkipMessage());
-        currentTask = null;
+        ProgressLogger currentTask = currentTasks.remove(task);
+        String taskMessage = state.getFailure() != null ? "FAILED" : state.getSkipMessage();
+        currentTask.completed(taskMessage);
     }
 
     private String getDisplayName(Task task) {

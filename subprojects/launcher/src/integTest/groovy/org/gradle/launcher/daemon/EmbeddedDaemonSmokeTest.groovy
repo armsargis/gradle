@@ -15,18 +15,16 @@
  */
 package org.gradle.launcher.daemon
 
-import org.gradle.integtests.fixtures.*
-
-import org.gradle.launcher.DefaultBuildActionParameters
+import org.gradle.api.logging.LogLevel
 import org.gradle.configuration.GradleLauncherMetaData
-import org.gradle.logging.LoggingServiceRegistry
-import org.gradle.logging.internal.OutputEventListener
-
-import org.gradle.tooling.internal.provider.ExecuteBuildAction
+import org.gradle.launcher.daemon.client.DaemonClient
+import org.gradle.launcher.daemon.client.EmbeddedDaemonClientServices
+import org.gradle.launcher.exec.DefaultBuildActionParameters
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.tooling.internal.provider.ConfiguringBuildAction
-
-import spock.lang.*
+import org.gradle.tooling.internal.provider.ExecuteBuildAction
 import org.junit.Rule
+import spock.lang.Specification
 
 /**
  * Exercises the basic mechanics using an embedded daemon.
@@ -36,40 +34,38 @@ import org.junit.Rule
  */
 class EmbeddedDaemonSmokeTest extends Specification {
 
-    @Rule public final GradleDistribution distribution = new GradleDistribution()
+    @Rule TestNameTestDirectoryProvider temp
 
-    def connector = new EmbeddedDaemonConnector()
-    def metadata = new GradleLauncherMetaData()
-    def outputEventListener = LoggingServiceRegistry.newEmbeddableLogging().get(OutputEventListener)
-    def client = new DaemonClient(connector, metadata, outputEventListener)
-    
+    def daemonClientServices = new EmbeddedDaemonClientServices()
+
     def "run build"() {
         given:
-        def action = new ConfiguringBuildAction(distribution.gradleHomeDir, distribution.testDir, false, new ExecuteBuildAction(["echo"]))
-        def parameters = new DefaultBuildActionParameters(new GradleLauncherMetaData(), new Date().time, System.properties)
+        def action = new ConfiguringBuildAction(projectDirectory: temp.testDirectory, searchUpwards: false, tasks: ['echo'],
+                gradleUserHomeDir: temp.createDir("user-home"), action: new ExecuteBuildAction())
+        def parameters = new DefaultBuildActionParameters(new GradleLauncherMetaData(), new Date().time, System.properties, System.getenv(), temp.testDirectory, LogLevel.LIFECYCLE)
         
         and:
-        def outputFile = distribution.testDir.file("output.txt")
+        def outputFile = temp.file("output.txt")
         
         expect:
         !outputFile.exists()
         
         and:
-        distribution.testDir.file("build.gradle") << """
+        temp.file("build.gradle") << """
             task echo << {
                 file("output.txt").write "Hello!"
             }
         """
         
         when:
-        client.execute(action, parameters)
+        daemonClientServices.get(DaemonClient).execute(action, parameters)
         
         then:
         outputFile.exists() && outputFile.text == "Hello!"
     }
     
     def cleanup() {
-        connector.daemonRegistry.stopDaemons()
+        daemonClientServices?.close()
     }
 
 }

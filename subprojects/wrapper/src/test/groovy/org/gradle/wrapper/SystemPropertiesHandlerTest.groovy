@@ -15,7 +15,7 @@
  */
 package org.gradle.wrapper
 
-import org.gradle.util.TemporaryFolder
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
@@ -24,12 +24,7 @@ import spock.lang.Specification
  */
 class SystemPropertiesHandlerTest extends Specification {
     @Rule
-    TemporaryFolder tmpDir = new TemporaryFolder()
-
-    def parsesCommandLineProperties() {
-        expect:
-        ['a.b': 'c', d: '', e: '', f: 'g'] == SystemPropertiesHandler.getSystemProperties(['-Da.b=c', 'arg', '-Pa=v', '-D', '-Dd', '-De=', '-Df=g'] as String[])
-    }
+    TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
 
     def parsesPropertiesFile() {
         File propFile = tmpDir.file('props')

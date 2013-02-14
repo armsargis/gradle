@@ -15,14 +15,12 @@
  */
 package org.gradle.initialization;
 
-import org.gradle.api.internal.GradleInternal;
-import org.gradle.groovy.scripts.ScriptSource;
-
-import java.util.List;
+import java.io.File;
+import java.util.Collection;
 
 /**
  * Interface for objects that can find init scripts for a given build.
  */
 public interface InitScriptFinder {
-    public List<ScriptSource> findScripts(GradleInternal gradle);
+    public void findScripts(Collection<File> scripts);
 }

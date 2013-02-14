@@ -15,18 +15,20 @@
  */
 package org.gradle.tooling.internal.provider
 
-import org.gradle.launcher.daemon.DaemonClient
-import spock.lang.Specification
-import org.gradle.launcher.ReportedException
-import org.gradle.tooling.internal.protocol.BuildExceptionVersion1
 import org.gradle.initialization.GradleLauncherAction
-import org.gradle.tooling.internal.protocol.BuildOperationParametersVersion1
+import org.gradle.launcher.daemon.client.DaemonClient
+import org.gradle.launcher.daemon.configuration.DaemonParameters
+import org.gradle.launcher.exec.ReportedException
+import org.gradle.tooling.internal.protocol.BuildExceptionVersion1
+import org.gradle.tooling.internal.provider.connection.ProviderOperationParameters
+import spock.lang.Specification
 
 class DaemonGradleLauncherActionExecuterTest extends Specification {
     final DaemonClient client = Mock()
     final GradleLauncherAction<String> action = Mock()
-    final BuildOperationParametersVersion1 parameters = Mock()
-    final DaemonGradleLauncherActionExecuter executer = new DaemonGradleLauncherActionExecuter(client)
+    final ProviderOperationParameters parameters = Mock()
+    final DaemonParameters daemonParameters = Mock()
+    final DaemonGradleLauncherActionExecuter executer = new DaemonGradleLauncherActionExecuter(client, daemonParameters)
 
     def unpacksReportedException() {
         def failure = new RuntimeException()
@@ -38,5 +40,6 @@ class DaemonGradleLauncherActionExecuterTest extends Specification {
         BuildExceptionVersion1 e = thrown()
         e.cause == failure
         1 * client.execute(action, !null) >> { throw new ReportedException(failure) }
+        _ * daemonParameters.effectiveSystemProperties >> [:]
     }
 }

@@ -15,13 +15,15 @@
  */
 package org.gradle.integtests
 
-import org.gradle.integtests.fixtures.ArtifactBuilder
-import org.gradle.integtests.fixtures.ExecutionResult
-import org.gradle.util.TestFile
+import org.gradle.integtests.fixtures.AbstractIntegrationTest
+import org.gradle.integtests.fixtures.executer.ArtifactBuilder
+import org.gradle.integtests.fixtures.executer.ExecutionResult
+import org.gradle.test.fixtures.file.TestFile
 import org.junit.Test
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationTest
+
+import static org.hamcrest.Matchers.containsString
+import static org.hamcrest.Matchers.not
+import static org.junit.Assert.assertThat
 
 class SettingsScriptExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
@@ -42,7 +44,7 @@ println 'error message'
 assert settings != null
 assert buildscript.classLoader == getClass().classLoader.parent
 assert buildscript.classLoader == Thread.currentThread().contextClassLoader
-assert gradle.scriptClassLoader.parent == buildscript.classLoader.parent.parent
+assert gradle.scriptClassLoader.parents[0] == buildscript.classLoader.parent.parent
 Gradle.class.classLoader.loadClass('${implClassName}')
 try {
     buildscript.classLoader.loadClass('${implClassName}')

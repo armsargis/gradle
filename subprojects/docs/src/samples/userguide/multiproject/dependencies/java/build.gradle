@@ -6,7 +6,7 @@ subprojects {
         mavenCentral()
     }
     dependencies {
-        testCompile "junit:junit:4.8.2"
+        testCompile "junit:junit:4.11"
     }
 }
 
@@ -21,7 +21,4 @@ project(':services:personService') {
         compile project(':shared'), project(':api')
     }
 }
-
-dependsOnChildren()
-
 

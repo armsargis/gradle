@@ -20,9 +20,7 @@ import org.gradle.api.GradleException;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.internal.file.copy.CopyAction;
 import org.gradle.api.file.FileVisitDetails;
-import org.gradle.api.internal.file.copy.ArchiveCopyAction;
 import org.gradle.api.internal.file.copy.EmptyCopySpecVisitor;
-import org.gradle.api.internal.file.copy.ReadableCopySpec;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,13 +28,12 @@ import java.io.IOException;
 public class ZipCopySpecVisitor extends EmptyCopySpecVisitor {
     private ZipOutputStream zipOutStr;
     private File zipFile;
-    private ReadableCopySpec spec;
 
     public void startVisit(CopyAction action) {
-        ArchiveCopyAction archiveAction = (ArchiveCopyAction) action;
+        ZipCopyAction archiveAction = (ZipCopyAction) action;
         zipFile = archiveAction.getArchivePath();
         try {
-            zipOutStr = new ZipOutputStream(zipFile);
+            zipOutStr = archiveAction.getCompressor().createArchiveOutputStream(zipFile);
         } catch (Exception e) {
             throw new GradleException(String.format("Could not create ZIP '%s'.", zipFile), e);
         }
@@ -48,21 +45,15 @@ public class ZipCopySpecVisitor extends EmptyCopySpecVisitor {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            spec = null;
             zipOutStr = null;
         }
-    }
-
-    public void visitSpec(ReadableCopySpec spec) {
-        this.spec = spec;
     }
 
     public void visitFile(FileVisitDetails fileDetails) {
         try {
             ZipEntry archiveEntry = new ZipEntry(fileDetails.getRelativePath().getPathString());
-            archiveEntry.setMethod(ZipEntry.DEFLATED);
             archiveEntry.setTime(fileDetails.getLastModified());
-            archiveEntry.setUnixMode(UnixStat.FILE_FLAG | spec.getFileMode());
+            archiveEntry.setUnixMode(UnixStat.FILE_FLAG | fileDetails.getMode());
             zipOutStr.putNextEntry(archiveEntry);
             fileDetails.copyTo(zipOutStr);
             zipOutStr.closeEntry();
@@ -76,7 +67,7 @@ public class ZipCopySpecVisitor extends EmptyCopySpecVisitor {
             // Trailing slash in name indicates that entry is a directory
             ZipEntry archiveEntry = new ZipEntry(dirDetails.getRelativePath().getPathString() + '/');
             archiveEntry.setTime(dirDetails.getLastModified());
-            archiveEntry.setUnixMode(UnixStat.DIR_FLAG | spec.getDirMode());
+            archiveEntry.setUnixMode(UnixStat.DIR_FLAG | dirDetails.getMode());
             zipOutStr.putNextEntry(archiveEntry);
             zipOutStr.closeEntry();
         } catch (Exception e) {

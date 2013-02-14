@@ -23,11 +23,11 @@ import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.internal.DefaultCacheRepository;
+import org.gradle.internal.id.RandomLongIdGenerator;
+import org.gradle.test.fixtures.file.TestFile;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.testfixtures.internal.InMemoryCacheFactory;
 import org.gradle.util.HelperUtil;
-import org.gradle.util.RandomLongIdGenerator;
-import org.gradle.util.TemporaryFolder;
-import org.gradle.util.TestFile;
 import org.hamcrest.Matcher;
 import org.junit.Before;
 import org.junit.Rule;
@@ -43,7 +43,7 @@ import static org.junit.Assert.*;
 
 public class DefaultTaskArtifactStateRepositoryTest {
     @Rule
-    public TemporaryFolder tmpDir = new TemporaryFolder();
+    public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private final ProjectInternal project = HelperUtil.createRootProject();
     private final Gradle gradle = project.getGradle();
     private final TestFile outputFile = tmpDir.file("output-file");
@@ -63,10 +63,11 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
     @Before
     public void setup() {
-        CacheRepository cacheRepository = new DefaultCacheRepository(tmpDir.createDir("user-home"), "cache", CacheUsage.ON, new InMemoryCacheFactory());
+        CacheRepository cacheRepository = new DefaultCacheRepository(tmpDir.createDir("user-home"), null, CacheUsage.ON, new InMemoryCacheFactory());
+        TaskArtifactStateCacheAccess cacheAccess = new DefaultTaskArtifactStateCacheAccess(gradle, cacheRepository);
         FileSnapshotter inputFilesSnapshotter = new DefaultFileSnapshotter(new DefaultHasher());
-        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(inputFilesSnapshotter, new RandomLongIdGenerator(), cacheRepository, gradle);
-        TaskHistoryRepository taskHistoryRepository = new CacheBackedTaskHistoryRepository(cacheRepository, new CacheBackedFileSnapshotRepository(cacheRepository, gradle), gradle);
+        FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(inputFilesSnapshotter, new RandomLongIdGenerator(), cacheAccess);
+        TaskHistoryRepository taskHistoryRepository = new CacheBackedTaskHistoryRepository(cacheAccess, new CacheBackedFileSnapshotRepository(cacheAccess));
         repository = new DefaultTaskArtifactStateRepository(taskHistoryRepository, inputFilesSnapshotter, outputFilesSnapshotter);
     }
 
@@ -440,7 +441,7 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
         state = repository.getStateFor(task());
         assertFalse(state.isUpToDate());
-        assertThat(state.getExecutionHistory().getOutputFiles().getFiles(), (Matcher) hasItem(otherFile));
+        assertThat(state.getExecutionHistory().getOutputFiles().getFiles(), hasItem((File) otherFile));
     }
 
     @Test
@@ -457,7 +458,7 @@ public class DefaultTaskArtifactStateRepositoryTest {
 
         state = repository.getStateFor(task());
         assertTrue(state.isUpToDate());
-        assertThat(state.getExecutionHistory().getOutputFiles().getFiles(), (Matcher) not(hasItem(outputDirFile)));
+        assertThat(state.getExecutionHistory().getOutputFiles().getFiles(), not(hasItem((File) outputDirFile)));
         state.afterTask();
     }
 

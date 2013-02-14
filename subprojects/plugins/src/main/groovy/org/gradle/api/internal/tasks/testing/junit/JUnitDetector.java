@@ -15,9 +15,9 @@
  */
 package org.gradle.api.internal.tasks.testing.junit;
 
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.tasks.testing.detection.TestClassVisitor;
 import org.gradle.api.internal.tasks.testing.detection.AbstractTestFrameworkDetector;
+import org.gradle.api.internal.tasks.testing.detection.ClassFileExtractionManager;
+import org.gradle.api.internal.tasks.testing.detection.TestClassVisitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,8 +29,8 @@ import java.io.File;
 public class JUnitDetector extends AbstractTestFrameworkDetector<JUnitTestClassDetecter> {
     private static final Logger LOGGER = LoggerFactory.getLogger(JUnitDetector.class);
 
-    JUnitDetector(File testClassesDirectory, FileCollection testClasspath) {
-        super(testClassesDirectory, testClasspath);
+    public JUnitDetector(ClassFileExtractionManager classFileExtractionManager) {
+        super(classFileExtractionManager);
     }
 
     protected JUnitTestClassDetecter createClassVisitor() {

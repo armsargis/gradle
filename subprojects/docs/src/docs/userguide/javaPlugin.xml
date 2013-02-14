@@ -31,14 +31,15 @@
 
     <section>
         <title>Source sets</title>
-        <para>The Java plugin introduces the concept of a <firstterm>source set</firstterm>. A source set is a group of
+        <para>The Java plugin introduces the concept of a <firstterm>source set</firstterm>. A source set is simply a group of
             source files which are compiled and executed together. These source files may include Java source files and
             resource files. Other plugins add the ability to include Groovy and Scala source files in a source set.
             A source set has an associated compile classpath, and runtime classpath.
         </para>
         <para>
-            You might use a source set to define an integration test suite, or for the API classes of your project, or
-            to separate source which needs to be compiled against different Java versions.
+            One use for source sets is to group source files into logical groups which describe their purpose. For example,
+            you might use a source set to define an integration test suite, or you might use separate source sets to define
+            the API and implementation classes of your project.
         </para>
         <para>The Java plugin defines two standard source sets, called <literal>main</literal> and <literal>test</literal>.
             The <literal>main</literal> source set contains your production source code, which is compiled and assembled
@@ -46,7 +47,7 @@
             compiled and executed using JUnit or TestNG.
         </para>
     </section>
-    
+
     <section>
         <title>Tasks</title>
         <para>The Java plugin adds a number of tasks to your project, as shown below.</para>
@@ -68,7 +69,7 @@
                 <td>All tasks which produce the compile classpath. This includes the <literal>jar</literal> task for
                     project dependencies included in the <literal>compile</literal> configuration.
                 </td>
-                <td><apilink class="org.gradle.api.tasks.compile.Compile"/></td>
+                <td><apilink class="org.gradle.api.tasks.compile.JavaCompile"/></td>
                 <td>Compiles production Java source files using javac.</td>
             </tr>
             <tr>
@@ -97,7 +98,7 @@
                 <td>
                     <literal>compile</literal>, plus all tasks which produce the test compile classpath.
                 </td>
-                <td><apilink class="org.gradle.api.tasks.compile.Compile"/></td>
+                <td><apilink class="org.gradle.api.tasks.compile.JavaCompile"/></td>
                 <td>Compiles test Java source files using javac.</td>
             </tr>
             <tr>
@@ -198,7 +199,7 @@
                 <td>
                     All tasks which produce the source set's compile classpath.
                 </td>
-                <td><apilink class="org.gradle.api.tasks.compile.Compile"/></td>
+                <td><apilink class="org.gradle.api.tasks.compile.JavaCompile"/></td>
                 <td>Compiles the given source set's Java source files using javac.</td>
             </tr>
             <tr>
@@ -222,7 +223,7 @@
                 <td>Assembles the given source set's classes directory.</td>
             </tr>
         </table>
-        
+
         <para>The Java plugin also adds a number of tasks which form a lifecycle for the project:</para>
 
         <table>
@@ -297,7 +298,9 @@
                     The tasks which produce the artifacts in configuration <replaceable>ConfigurationName</replaceable>.
                 </td>
                 <td><apilink class="org.gradle.api.Task"/></td>
-                <td>Assembles the artifacts in the specified configuration.</td>
+                <td>Assembles the artifacts in the specified configuration.
+                    The task is added by the Base plugin which is implicitly applied by the Java plugin.
+                </td>
             </tr>
             <tr>
                 <td>
@@ -307,7 +310,9 @@
                     The tasks which uploads the artifacts in configuration <replaceable>ConfigurationName</replaceable>.
                 </td>
                 <td><apilink class="org.gradle.api.tasks.Upload"/></td>
-                <td>Assembles and uploads the artifacts in the specified configuration.</td>
+                <td>Assembles and uploads the artifacts in the specified configuration.
+                    The task is added by the Base plugin which is implicitly applied by the Java plugin.
+                </td>
             </tr>
         </table>
 
@@ -356,8 +361,6 @@
         <title>Dependency management</title>
         <para>The Java plugin adds a number of dependency configurations to your project, as shown below. It assigns
             those configurations to tasks such as <literal>compileJava</literal> and <literal>test</literal>.
-            To learn more about configurations see <xref linkend="sub:configurations"/> and
-            <xref linkend="artifacts_and_configurations"/>.
         </para>
         <table id='tab:configurations'>
             <title>Java plugin - dependency configurations</title>
@@ -401,9 +404,10 @@
             </tr>
             <tr>
                 <td>default</td>
-                <td>runtime, archives</td>
+                <td>runtime</td>
                 <td>-</td>
-                <td>Artifacts produced <literal>and</literal> dependencies required by this project.
+                <td>The default configuration used by a project dependency on this project. Contains the artifacts and
+                    dependencies required by this project at runtime.
                 </td>
             </tr>
         </table>
@@ -413,6 +417,30 @@
                 <imagedata fileref="img/javaPluginConfigurations.png"/>
             </imageobject>
         </figure>
+        <para>For each source set you add to the project, the Java plugins adds the following dependency configurations:</para>
+        <table id="java_source_set_configurations">
+            <title>Java plugin - source set dependency configurations</title>
+            <thead>
+                <tr>
+                    <td>Name</td>
+                    <td>Extends</td>
+                    <td>Used by tasks</td>
+                    <td>Meaning</td>
+                </tr>
+            </thead>
+            <tr>
+                <td><replaceable>sourceSet</replaceable>Compile</td>
+                <td>-</td>
+                <td>compile<replaceable>SourceSet</replaceable>Java</td>
+                <td>Compile time dependencies for the given source set</td>
+            </tr>
+            <tr>
+                <td><replaceable>sourceSet</replaceable>Runtime</td>
+                <td><replaceable>sourceSet</replaceable>Compile</td>
+                <td>-</td>
+                <td>Runtime time dependencies for the given source set</td>
+            </tr>
+        </table>
     </section>
 
     <section>
@@ -626,19 +654,17 @@
                 <td>
                     <literal>sourceCompatibility</literal>
                 </td>
-                <td><apilink class="org.gradle.api.JavaVersion"/>. Can also set using a String or a Number, eg
+                <td><apilink class="org.gradle.api.JavaVersion"/>. Can also set using a String or a Number, e.g.
                     <literal>'1.5'</literal> or <literal>1.5</literal>.
                 </td>
-                <td>
-                    <literal>1.5</literal>
-                </td>
+                <td>Value of the current used JVM</td>
                 <td>Java version compatibility to use when compiling Java source.</td>
             </tr>
             <tr>
                 <td>
                     <literal>targetCompatibility</literal>
                 </td>
-                <td><apilink class="org.gradle.api.JavaVersion"/>. Can also set using a String or Number, eg
+                <td><apilink class="org.gradle.api.JavaVersion"/>. Can also set using a String or Number, e.g.
                     <literal>'1.5'</literal> or <literal>1.5</literal>.
                 </td>
                 <td>
@@ -664,17 +690,6 @@
                 <td>an empty manifest</td>
                 <td>The manifest to include in all JAR files.</td>
             </tr>
-            <tr>
-                <td>
-                    <literal>metaInf</literal>
-                </td>
-                <td>
-                    <classname>List</classname>
-                </td>
-                <td><literal>[]</literal></td>
-                <td>A set of <link linkend="sec:file_collections">file collections</link> which specify the files to
-                    include in the <filename>META-INF</filename> directory or all JAR files.</td>
-            </tr>
         </table>
 
         <para>
@@ -688,7 +703,7 @@
         <title>Working with source sets</title>
         <para>You can access the source sets of a project using the <literal>sourceSets</literal> property. This
             is a container for the project's source sets, of type <apilink class="org.gradle.api.tasks.SourceSetContainer"/>.
-            There is also a <literal>sourceSets()</literal> method, which you can pass a closure to which configures the
+            There is also a <literal>sourceSets { }</literal> script block, which you can pass a closure to configure the
             source set container. The source set container works pretty much the same way as other containers, such
             as <literal>tasks</literal>.
         </para>
@@ -700,15 +715,6 @@
             main Java and resources directories:</para>
         <sample id="configureSourceSet" dir="java/customizedLayout" title="Configuring the source directories of a source set">
             <sourcefile file="build.gradle" snippet="define-main"/>
-        </sample>
-        <para>To define a new source set, you simply reference it in the <literal>sourceSets { }</literal> block.
-            When you define a source set, the Java plugin adds a number of tasks which assemble the classes for the
-            source set, as shown in <xref linkend="java_source_set_tasks"/>. For example, if you add a source set called
-            <literal>intTest</literal>, the Java plugin adds <literal>compileIntTestJava</literal>, <literal>processIntTestResources</literal>
-            and <literal>intTestClasses</literal> tasks.
-        </para>
-        <sample id="defineSourceSet" dir="userguide/java/sourceSets" title="Defining a source set">
-            <sourcefile file="build.gradle" snippet="define-source-set"/>
         </sample>
 
         <section>
@@ -742,7 +748,21 @@
                 </tr>
                 <tr>
                     <td>
-                        <literal>classesDir</literal>
+                        <literal>output</literal>
+                    </td>
+                    <td>
+                        <apilink class="org.gradle.api.tasks.SourceSetOutput"/> (read-only)
+                    </td>
+                    <td>
+                        Not null
+                    </td>
+                    <td>
+                        The output files of the source set, containing its compiled classes and resources.
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <literal>output.classesDir</literal>
                     </td>
                     <td>
                         <classname>File</classname>
@@ -756,13 +776,27 @@
                 </tr>
                 <tr>
                     <td>
+                        <literal>output.resourcesDir</literal>
+                    </td>
+                    <td>
+                        <classname>File</classname>
+                    </td>
+                    <td>
+                        <literal><replaceable>buildDir</replaceable>/resources/<replaceable>name</replaceable></literal>
+                    </td>
+                    <td>
+                        The directory to generate the resources of this source set into.
+                    </td>
+                </tr>
+                <tr>
+                    <td>
                         <literal>compileClasspath</literal>
                     </td>
                     <td>
                         <apilink class="org.gradle.api.file.FileCollection"/>
                     </td>
                     <td>
-                        <literal>compile</literal> Configuration.
+                        <literal>compile<replaceable>SourceSet</replaceable></literal> configuration.
                     </td>
                     <td>
                         The classpath to use when compiling the source files of this source set.
@@ -776,7 +810,7 @@
                         <apilink class="org.gradle.api.file.FileCollection"/>
                     </td>
                     <td>
-                        <literal>classesDir</literal> + <literal>runtime</literal> Configuration.
+                        <literal>output</literal> + <literal>runtime<replaceable>SourceSet</replaceable></literal> configuration.
                     </td>
                     <td>
                         The classpath to use when executing the classes of this source set.
@@ -846,7 +880,7 @@
                         <literal>allJava</literal>
                     </td>
                     <td>
-                        <apilink class="org.gradle.api.file.FileTree"/> (read-only)
+                        <apilink class="org.gradle.api.file.SourceDirectorySet"/> (read-only)
                     </td>
                     <td>
                         <literal>java</literal>
@@ -861,7 +895,7 @@
                         <literal>allSource</literal>
                     </td>
                     <td>
-                        <apilink class="org.gradle.api.file.FileTree"/> (read-only)
+                        <apilink class="org.gradle.api.file.SourceDirectorySet"/> (read-only)
                     </td>
                     <td>
                         <literal>resources + java</literal>
@@ -875,11 +909,33 @@
         </section>
 
         <section>
-            <title>Some source set examples</title>
-            <para>Using dependency configurations to define the source set classpath:</para>
-            <sample id="configureSourceSet" dir="userguide/java/sourceSets" title="Defining the classpath of a source set">
-                <sourcefile file="build.gradle" snippet="classpath-using-configurations"/>
+            <title>Defining new source sets</title>
+            <para>To define a new source set, you simply reference it in the <literal>sourceSets { }</literal> block. Here's an example:
+            </para>
+            <sample id="defineSourceSet" dir="userguide/java/sourceSets" title="Defining a source set">
+                <sourcefile file="build.gradle" snippet="define-source-set"/>
             </sample>
+            <para>
+                When you define a new source set, the Java plugin adds some dependency configurations for the
+                source set, as shown in <xref linkend="java_source_set_configurations"/>. You can use these configurations to
+                define the compile and runtime dependencies of the source set.
+            </para>
+            <sample id="sourceSetDependencies" dir="userguide/java/sourceSets" title="Defining source set dependencies">
+                <sourcefile file="build.gradle" snippet="source-set-dependencies"/>
+            </sample>
+            <para>
+                The Java plugin also adds a number of tasks which assemble the classes for the
+                source set, as shown in <xref linkend="java_source_set_tasks"/>. For example, for a source set called
+                <literal>intTest</literal>, you can run <userinput>gradle intTestClasses</userinput> to compile the
+                int test classes.
+            </para>
+            <sample id="compileSourceSet" dir="userguide/java/sourceSets" title="Compiling a source set">
+                <output args="intTestClasses"/>
+            </sample>
+        </section>
+
+        <section>
+            <title>Some source set examples</title>
             <para>Adding a JAR containing the classes of a source set:</para>
             <sample id="configureSourceSet" dir="userguide/java/sourceSets" title="Assembling a JAR for a source set">
                 <sourcefile file="build.gradle" snippet="jar"/>
@@ -902,7 +958,7 @@
             <ulink url='http://download.oracle.com/javase/1.5.0/docs/tooldocs/windows/javadoc.html#referenceguide'>reference documentation</ulink>
             of the Javadoc executable.
             For a complete list of supported Javadoc options consult the API documentation of the following classes:
-            <apilink class="org.gradle.external.javadoc.CoreJavadocOptions"/> and <apilink class="org.gradle.external.javadoc.StandardJavadocDocletOptions"/>. 
+            <apilink class="org.gradle.external.javadoc.CoreJavadocOptions"/> and <apilink class="org.gradle.external.javadoc.StandardJavadocDocletOptions"/>.
         </para>
         <table>
             <title>Java plugin - Javadoc properties</title>
@@ -918,7 +974,7 @@
                     <literal>classpath</literal>
                 </td>
                 <td><apilink class="org.gradle.api.file.FileCollection"/></td>
-                <td><literal>sourceSets.main.classes + sourceSets.main.compileClasspath</literal></td>
+                <td><literal>sourceSets.main.output + sourceSets.main.compileClasspath</literal></td>
             </tr>
             <tr>
                 <td><literal>source</literal></td>
@@ -994,16 +1050,15 @@
                     <literal>destinationDir</literal>
                 </td>
                 <td><classname>File</classname>. Can set using anything described in <xref linkend="sec:locating_files"/>.</td>
-                <td><literal><replaceable>sourceSet</replaceable>output.resourcesDir</literal></td>
+                <td><literal><replaceable>sourceSet</replaceable>.output.resourcesDir</literal></td>
             </tr>
         </table>
     </section>
 
     <section id='sec:compile'>
         <title>CompileJava</title>
-        <para>The Java plugin adds a <apilink class="org.gradle.api.tasks.compile.Compile"/> instance for each
-            source set in the project. The compile task delegates to Ant's javac task to do the compile. You can set most
-            of the properties of the Ant javac task.
+        <para>The Java plugin adds a <apilink class="org.gradle.api.tasks.compile.JavaCompile"/> instance for each
+            source set in the project. Some of the most common configuration options are shown below.
         </para>
         <table>
             <title>Java plugin - Compile properties</title>
@@ -1033,9 +1088,20 @@
                     <literal>destinationDir</literal>
                 </td>
                 <td><classname>File</classname>.</td>
-                <td><literal><replaceable>sourceSet</replaceable>.classesDir</literal></td>
+                <td><literal><replaceable>sourceSet</replaceable>.output.classesDir</literal></td>
             </tr>
         </table>
+
+        <para>The compile task delegates to Ant's javac task. Setting <literal>options.useAnt</literal> to <literal>false</literal>
+            activates Gradle's direct compiler integration, bypassing the Ant task. In a future Gradle release, this will become the default.
+        </para>
+
+        <para>By default, the Java compiler runs in the Gradle process. Setting <literal>options.fork</literal> to <literal>true</literal>
+            causes compilation to occur in a separate process. In the case of the Ant javac task, this means that a new process will be
+            forked for each compile task, which can slow down compilation. Conversely, Gradle's direct compiler integration (see above) will
+            reuse the same compiler process as much as possible. In both cases, all fork options specified
+            with <literal>options.forkOptions</literal> will be honored.
+        </para>
     </section>
 
     <section id='sec:java_test'>
@@ -1048,7 +1114,7 @@
 
         <section>
             <title>Test execution</title>
-            <para>Tests are executed in a separate isolated JVM. The <apilink class="org.gradle.api.tasks.testing.Test"/> task's
+            <para>Tests are executed in a separate JVM, isolated from the main build process. The <apilink class="org.gradle.api.tasks.testing.Test"/> task's
                 API allows you some control over how this happens.
             </para>
             <para>There are a number of properties which control how the test process is launched. This includes
@@ -1057,7 +1123,7 @@
                 suspended and listening on port 5005. This makes it very easy to debug your tests.  You may also enable
                 this using a system property as specified below.
             </para>
-            <para>You can specify whether or not to execute your tests in parallel. Gradle provides parallel test execution 
+            <para>You can specify whether or not to execute your tests in parallel. Gradle provides parallel test execution
                 by running multiple test processes concurrently. Each test process executes only a single test at a time, so you
                 generally don't need to do anything special to your tests to take advantage of this.
                 The <literal>maxParallelForks</literal> property specifies the maximum number of test processes to run
@@ -1076,6 +1142,11 @@
             <para>The task has an <literal>ignoreFailures</literal> property to control the behavior when tests fail.
                 Test always executes every test that it detects. It stops the build afterwards if <literal>ignoreFailures</literal>
                 is false and there are failing tests. The default value of <literal>ignoreFailures</literal> is false.
+            </para>
+            <para>The <literal>testLogging</literal> property allows to configure which test events are going to be logged and at
+                which detail level. By default, a concise message will be logged for every failed test. See
+                <apilink class="org.gradle.api.tasks.testing.logging.TestLoggingContainer"/> for how to tune test logging to your
+                preferences.
             </para>
         </section>
 
@@ -1114,7 +1185,7 @@
             </para>
             <para>Setting a system property of <literal>taskName.debug</literal> will run the tests in debug mode,
                   suspended and listening on port 5005.  For example:
-                  <literal>gradle test -Dtest.single=ThisUniquelyNamedTest -Dtest.debug</literal>                
+                  <literal>gradle test -Dtest.single=ThisUniquelyNamedTest -Dtest.debug</literal>
             </para>
         </section>
 
@@ -1158,6 +1229,37 @@
             </para>
         </section>
 
+        <section id="test_reporting">
+            <title>Test reporting</title>
+
+            <para>The <literal>Test</literal> task generates the following results by default.</para>
+            <itemizedlist>
+                <listitem><para>An HTML test report.</para></listitem>
+                <listitem><para>The results in an XML format that is compatible with the Ant JUnit report task. This format is supported by many
+                    other tools, such as CI servers.</para></listitem>
+                <listitem><para>Results in an efficient binary format. The task generates the other results from these binary results.</para></listitem>
+            </itemizedlist>
+
+            <para>You can disable the HTML test report using the <apilink class="org.gradle.api.tasks.testing.Test" method="setTestReport"/> method. The other
+                results currently cannot be disabled.
+            </para>
+
+            <para>There is also a stand-alone <apilink class="org.gradle.api.tasks.testing.TestReport"/> task type which can generate the HTML test
+                report from the binary results generated by one or more <classname>Test</classname> task instances. To use this task type, you need
+                to define a <literal>destinationDir</literal> and the test results to include in the report. Here is a sample which generates a
+                combined report for the unit tests from subprojects:
+            </para>
+            <sample id="subProjectsTestReport" dir="testing/testReport" title="Creating a unit test report for subprojects">
+                <sourcefile file="build.gradle" snippet="test-report"/>
+            </sample>
+
+            <para>You should note that the <literal>TestReport</literal> type combines the results from multiple test
+                tasks, but it does not aggregate the results of individual test classes. This means that if a given test class is executed by
+                multiple test tasks, then the test report will include only one execution of that class and discard the other executions of that
+                class. This will be addressed in a future Gradle version.
+            </para>
+        </section>
+
         <section>
             <title>Convention values</title>
             <table>
@@ -1172,7 +1274,7 @@
                 <tr>
                     <td><literal>testClassesDir</literal></td>
                     <td><classname>File</classname></td>
-                    <td><literal>sourceSets.test.classesDir</literal></td>
+                    <td><literal>sourceSets.test.output.classesDir</literal></td>
                 </tr>
                 <tr>
                     <td><literal>classpath</literal></td>
@@ -1233,7 +1335,7 @@
             </sample>
             <para>Manifest are merged in the order they are declared by the <literal>from</literal> statement. If
             the based manifest and the merged manifest both define values for the same key, the merged manifest wins by default.
-            You can fully customize the merge behavior behavior by adding <literal>eachEntry</literal> actions in which
+            You can fully customize the merge behavior by adding <literal>eachEntry</literal> actions in which
                 you have access to a <apilink class="org.gradle.api.java.archives.ManifestMergeDetails"/> instance for each entry
                 of the resulting manifest. The merge is not immediately triggered by the from statement. It is done lazily,
                 either when generating the jar, or by calling <literal>writeTo</literal> or <literal>effectiveManifest</literal></para>
@@ -1243,16 +1345,6 @@
                 <sourcefile file="build.gradle" snippet="write"/>
             </sample>
         </section>
-        <section id='sub:metainf'>
-            <title>MetaInf</title>
-            <para>The convention object of the Java plugin has a <literal>metaInf</literal> property pointing to a list of
-                <classname>FileSet</classname> objects. With these file sets you can define which files should be in the
-                <filename>META-INF</filename> directory of a JAR or a WAR archive.
-            </para>
-            <programlisting><![CDATA[
-metaInf << new FileSet(someDir)
-]]></programlisting>
-        </section>
     </section>
 
     <section id='sec:upload'>
@@ -1260,5 +1352,5 @@ metaInf << new FileSet(someDir)
         <para>How to upload your archives is described in <xref linkend="artifact_management"/>.
         </para>
     </section>
-    
+
 </chapter>

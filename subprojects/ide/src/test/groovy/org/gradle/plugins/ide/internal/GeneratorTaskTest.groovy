@@ -15,16 +15,15 @@
  */
 package org.gradle.plugins.ide.internal
 
-import org.gradle.api.Action
 import org.gradle.plugins.ide.api.GeneratorTask
 import org.gradle.plugins.ide.internal.generator.generator.Generator
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.HelperUtil
-import org.gradle.util.TemporaryFolder
 import org.junit.Rule
 import spock.lang.Specification
 
 class GeneratorTaskTest extends Specification {
-    @Rule public final TemporaryFolder tmpDir = new TemporaryFolder()
+    @Rule public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     final Generator<TestConfigurationObject> generator = Mock()
     final File inputFile = tmpDir.file('input')
     final File outputFile = tmpDir.file('output')
@@ -77,33 +76,6 @@ class GeneratorTaskTest extends Specification {
         0 * _._
     }
 
-    def executesActionBeforeConfiguringObject() {
-        def configObject = new TestConfigurationObject()
-        Action<TestConfigurationObject> action = Mock()
-        task.beforeConfigured(action)
-
-        when:
-        task.generate()
-
-        then:
-        1 * generator.defaultInstance() >> configObject
-        1 * action.execute(configObject)
-        1 * generator.configure(configObject)
-    }
-
-    def executesActionAfterConfiguringObject() {
-        def configObject = new TestConfigurationObject()
-        Action<TestConfigurationObject> action = Mock()
-        task.whenConfigured(action)
-
-        when:
-        task.generate()
-
-        then:
-        1 * generator.defaultInstance() >> configObject
-        1 * generator.configure(configObject)
-        1 * action.execute(configObject)
-    }
 }
 
 class TestConfigurationObject {

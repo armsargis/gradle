@@ -15,12 +15,9 @@
  */
 package org.gradle.api.internal.changedetection;
 
-import org.gradle.api.invocation.Gradle;
-import org.gradle.cache.CacheRepository;
-import org.gradle.cache.ObjectCacheBuilder;
 import org.gradle.cache.PersistentIndexedCache;
-import org.gradle.cache.Serializer;
-import org.gradle.util.TemporaryFolder;
+import org.gradle.messaging.serialize.Serializer;
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
@@ -38,13 +35,12 @@ import static org.junit.Assert.assertThat;
 @RunWith(JMock.class)
 public class CachingHasherTest {
     @Rule
-    TemporaryFolder tmpDir = new TemporaryFolder();
+    TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private final JUnit4Mockery context = new JUnit4Mockery();
     private final Hasher delegate = context.mock(Hasher.class);
-    private final Gradle gradle = context.mock(Gradle.class);
     private final PersistentIndexedCache<File, CachingHasher.FileInfo> cache = context.mock(
             PersistentIndexedCache.class);
-    private final CacheRepository cacheRepository = context.mock(CacheRepository.class);
+    private final TaskArtifactStateCacheAccess cacheAccess = context.mock(TaskArtifactStateCacheAccess.class);
     private final byte[] hash = "hash".getBytes();
     private final File file = tmpDir.createFile("testfile").write("content");
     private CachingHasher hasher;
@@ -52,21 +48,10 @@ public class CachingHasherTest {
     @Before
     public void setup() {
         context.checking(new Expectations(){{
-            ObjectCacheBuilder<CachingHasher.FileInfo, PersistentIndexedCache<File, CachingHasher.FileInfo>> cacheBuilder = context.mock(ObjectCacheBuilder.class);
-
-            one(cacheRepository).indexedCache(File.class, CachingHasher.FileInfo.class, "fileHashes");
-            will(returnValue(cacheBuilder));
-
-            one(cacheBuilder).forObject(gradle);
-            will(returnValue(cacheBuilder));
-
-            one(cacheBuilder).withSerializer(with(notNullValue(Serializer.class)));
-            will(returnValue(cacheBuilder));
-
-            one(cacheBuilder).open();
+            one(cacheAccess).createCache(with(equalTo("fileHashes")), with(equalTo(File.class)), with(notNullValue(Class.class)), with(notNullValue(Serializer.class)));
             will(returnValue(cache));
         }});
-        hasher = new CachingHasher(delegate, cacheRepository, gradle);
+        hasher = new CachingHasher(delegate, cacheAccess);
     }
 
     @Test

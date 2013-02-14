@@ -16,7 +16,7 @@
 
 package org.gradle.api.internal.tasks.testing.processors;
 
-import org.gradle.api.internal.Factory;
+import org.gradle.internal.Factory;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
 import org.gradle.api.internal.tasks.testing.TestClassRunInfo;
 import org.gradle.api.internal.tasks.testing.TestResultProcessor;
@@ -29,6 +29,7 @@ import org.junit.runner.RunWith;
 @RunWith(JMock.class)
 public class RestartEveryNTestClassProcessorTest {
     private final JUnit4Mockery context = new JUnit4Mockery();
+    @SuppressWarnings("unchecked")
     private final Factory<TestClassProcessor> factory = context.mock(Factory.class);
     private final TestClassProcessor delegate = context.mock(TestClassProcessor.class);
     private final TestClassRunInfo test1 = context.mock(TestClassRunInfo.class, "test1");

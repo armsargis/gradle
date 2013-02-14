@@ -20,8 +20,8 @@ import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.tasks.TaskContainer;
-import org.gradle.tooling.internal.DefaultGradleProject;
-import org.gradle.tooling.internal.DefaultGradleTask;
+import org.gradle.tooling.internal.gradle.DefaultGradleProject;
+import org.gradle.tooling.internal.gradle.DefaultGradleTask;
 import org.gradle.tooling.internal.protocol.InternalGradleProject;
 import org.gradle.tooling.model.GradleTask;
 
@@ -35,13 +35,12 @@ import java.util.List;
  * @author: Szczepan Faber, created at: 7/27/11
  */
 public class GradleProjectBuilder implements BuildsModel {
-    public boolean canBuild(Class type) {
+    public boolean canBuild(Class<?> type) {
         return type == InternalGradleProject.class;
     }
 
     public DefaultGradleProject buildAll(GradleInternal gradle) {
-        DefaultGradleProject root = buildHierarchy(gradle.getRootProject());
-        return root;
+        return buildHierarchy(gradle.getRootProject());
     }
 
     private DefaultGradleProject buildHierarchy(Project project) {
@@ -54,7 +53,7 @@ public class GradleProjectBuilder implements BuildsModel {
                 .setPath(project.getPath())
                 .setName(project.getName())
                 .setDescription(project.getDescription())
-                .setChildren((List) children);
+                .setChildren(children);
 
         gradleProject.setTasks(tasks(gradleProject, project.getTasks()));
 

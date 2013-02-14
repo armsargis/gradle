@@ -18,26 +18,30 @@ package org.gradle.tooling.internal.consumer;
 import org.gradle.tooling.BuildLauncher;
 import org.gradle.tooling.ProgressListener;
 import org.gradle.tooling.ResultHandler;
-import org.gradle.tooling.internal.protocol.BuildParametersVersion1;
+import org.gradle.tooling.internal.consumer.async.AsyncConnection;
+import org.gradle.tooling.internal.consumer.parameters.ConsumerOperationParameters;
 import org.gradle.tooling.model.Task;
 
+import java.io.File;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
-class DefaultBuildLauncher extends AbstractLongRunningOperation implements BuildLauncher {
-    private final List<String> tasks = new ArrayList<String>();
+class DefaultBuildLauncher implements BuildLauncher {
     private final AsyncConnection connection;
+    private ConsumerOperationParameters operationParameters;
 
     public DefaultBuildLauncher(AsyncConnection connection, ConnectionParameters parameters) {
-        super(parameters);
+        operationParameters = new ConsumerOperationParameters(parameters);
+        operationParameters.setTasks(Collections.<String>emptyList());
         this.connection = connection;
     }
 
     public BuildLauncher forTasks(String... tasks) {
-        this.tasks.clear();
-        this.tasks.addAll(Arrays.asList(tasks));
+        operationParameters.setTasks(Arrays.asList(tasks));
         return this;
     }
 
@@ -47,28 +51,46 @@ class DefaultBuildLauncher extends AbstractLongRunningOperation implements Build
     }
 
     public BuildLauncher forTasks(Iterable<? extends Task> tasks) {
-        this.tasks.clear();
+        List<String> taskPaths = new ArrayList<String>();
         for (Task task : tasks) {
-            this.tasks.add(task.getPath());
+            taskPaths.add(task.getPath());
         }
+        operationParameters.setTasks(taskPaths);
         return this;
     }
 
-    @Override
+    public BuildLauncher withArguments(String... arguments) {
+        operationParameters.setArguments(arguments);
+        return this;
+    }
+
     public DefaultBuildLauncher setStandardError(OutputStream outputStream) {
-        super.setStandardError(outputStream);
+        operationParameters.setStandardError(outputStream);
         return this;
     }
 
-    @Override
     public DefaultBuildLauncher setStandardOutput(OutputStream outputStream) {
-        super.setStandardOutput(outputStream);
+        operationParameters.setStandardOutput(outputStream);
         return this;
     }
 
-    @Override
+    public DefaultBuildLauncher setStandardInput(InputStream inputStream) {
+        operationParameters.setStandardInput(inputStream);
+        return this;
+    }
+
+    public DefaultBuildLauncher setJavaHome(File javaHome) {
+        operationParameters.setJavaHome(javaHome);
+        return this;
+    }
+
+    public DefaultBuildLauncher setJvmArguments(String... jvmArguments) {
+        operationParameters.setJvmArguments(jvmArguments);
+        return this;
+    }
+
     public DefaultBuildLauncher addProgressListener(ProgressListener listener) {
-        super.addProgressListener(listener);
+        operationParameters.addProgressListener(listener);
         return this;
     }
 
@@ -79,17 +101,11 @@ class DefaultBuildLauncher extends AbstractLongRunningOperation implements Build
     }
 
     public void run(final ResultHandler<? super Void> handler) {
-        connection.executeBuild(new DefaultBuildParameters(), operationParameters(), new ResultHandlerAdapter<Void>(handler){
+        connection.run(Void.class, operationParameters, new ResultHandlerAdapter<Void>(handler) {
             @Override
             protected String connectionFailureMessage(Throwable failure) {
                 return String.format("Could not execute build using %s.", connection.getDisplayName());
             }
         });
-    }
-
-    private class DefaultBuildParameters implements BuildParametersVersion1 {
-        public List<String> getTasks() {
-            return tasks;
-        }
     }
 }

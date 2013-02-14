@@ -15,9 +15,9 @@
  */
 package org.gradle.integtests;
 
-import org.gradle.integtests.fixtures.ExecutionFailure;
-import org.gradle.integtests.fixtures.internal.AbstractIntegrationTest;
-import org.gradle.util.TestFile;
+import org.gradle.integtests.fixtures.AbstractIntegrationTest;
+import org.gradle.integtests.fixtures.executer.ExecutionFailure;
+import org.gradle.test.fixtures.file.TestFile;
 import org.junit.Test;
 
 import static org.hamcrest.Matchers.containsString;
@@ -32,7 +32,7 @@ public class InitScriptErrorIntegrationTest extends AbstractIntegrationTest {
         failure.assertHasFileName(String.format("Initialization script '%s'", initScript));
         failure.assertHasLineNumber(2);
         failure.assertHasDescription("A problem occurred evaluating initialization script.");
-        failure.assertHasCause("No signature of method: org.gradle.invocation.DefaultGradle.createTakk() is applicable for argument types: (java.lang.String) values: [do-stuff]");
+        failure.assertHasCause("Could not find method createTakk() for arguments [do-stuff] on build.");
     }
 
     @Test
