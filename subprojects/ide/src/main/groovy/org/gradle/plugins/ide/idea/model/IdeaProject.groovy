@@ -16,6 +16,7 @@
 
 package org.gradle.plugins.ide.idea.model
 
+import org.gradle.api.Incubating
 import org.gradle.plugins.ide.api.XmlFileContentMerger
 import org.gradle.util.ConfigureUtil
 
@@ -52,7 +53,7 @@ import org.gradle.util.ConfigureUtil
  * }
  * </pre>
  *
- * For tackling edge cases users can perform advanced configuration on resulting xml file.
+ * For tackling edge cases users can perform advanced configuration on resulting XML file.
  * It is also possible to affect the way IDEA plugin merges the existing configuration
  * via beforeMerged and whenMerged closures.
  * <p>
@@ -136,6 +137,7 @@ class IdeaProject {
     /**
      * The project-level libraries to be added to the IDEA project.
      */
+    @Incubating
     Set<ProjectLibrary> projectLibraries = [] as LinkedHashSet
 
     /**
@@ -147,7 +149,7 @@ class IdeaProject {
     }
 
     /**
-     * Enables advanced configuration like tinkering with the output xml
+     * Enables advanced configuration like tinkering with the output XML
      * or affecting the way existing *.ipr content is merged with Gradle build information.
      * <p>
      * See the examples in the docs for {@link IdeaProject}

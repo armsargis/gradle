@@ -16,22 +16,23 @@
 
 package org.gradle.api.publish.maven
 
-import org.gradle.integtests.fixtures.AbstractDependencyResolutionTest
+import org.gradle.test.fixtures.maven.M2Installation
 import org.gradle.test.fixtures.maven.MavenFileRepository
 import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 import spock.lang.Ignore
-
 /**
  * Tests “simple” maven publishing scenarios
  */
-class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
+class MavenPublishBasicIntegTest extends AbstractMavenPublishIntegTest {
     @Rule SetSystemProperties sysProp = new SetSystemProperties()
 
     MavenFileRepository m2Repo
 
     def "setup"() {
+        def m2Installation = new M2Installation(testDirectory)
         m2Repo = m2Installation.mavenRepo()
+        executer.beforeExecute m2Installation
     }
 
     def "publishes nothing without defined publication"() {
@@ -79,8 +80,11 @@ class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
 
         then:
         def module = mavenRepo.module('org.gradle.test', 'empty-project', '1.0')
-        module.assertPublished()
+        module.assertPublishedAsPomModule()
         module.parsedPom.scopes.isEmpty()
+
+        and:
+        resolveArtifacts(module) == []
     }
 
     def "can publish simple jar"() {
@@ -129,6 +133,9 @@ class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
 
         then: "jar is published to maven local repository"
         localModule.assertPublishedAsJavaModule()
+
+        and:
+        resolveArtifacts(repoModule) == ['root-1.0.jar']
     }
 
     def "can publish a snapshot version"() {
@@ -157,7 +164,10 @@ class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
 
         then:
         def module = mavenRepo.module('org.gradle', 'snapshotPublish', '1.0-SNAPSHOT')
-        module.assertArtifactsPublished('snapshotPublish-1.0-SNAPSHOT.jar', 'snapshotPublish-1.0-SNAPSHOT.pom')
+        module.assertArtifactsPublished("snapshotPublish-${module.publishArtifactVersion}.jar", "snapshotPublish-${module.publishArtifactVersion}.pom", "maven-metadata.xml")
+
+        and:
+        resolveArtifacts(module) == ["snapshotPublish-${module.publishArtifactVersion}.jar"]
     }
 
     def "reports failure publishing when model validation fails"() {
@@ -186,11 +196,11 @@ class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred evaluating root project 'bad-project'")
+        failure.assertHasDescription("A problem occurred configuring root project 'bad-project'.")
         failure.assertHasCause("Maven publication 'maven' cannot include multiple components")
     }
 
-    @Ignore("Not yet implemented - currently the second publication will overwrite") // TODO:DAZ fix in validation story
+    @Ignore("Not yet implemented - currently the second publication will overwrite")
     def "cannot publish multiple maven publications with the same identity"() {
         given:
         settingsFile << "rootProject.name = 'bad-project'"
@@ -219,7 +229,7 @@ class MavenPublishBasicIntegTest extends AbstractDependencyResolutionTest {
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred evaluating root project 'bad-project'")
+        failure.assertHasDescription("A problem occurred configuring root project 'bad-project'.")
         failure.assertHasCause("Publication with name 'mavenJava' already exists")
     }
 }

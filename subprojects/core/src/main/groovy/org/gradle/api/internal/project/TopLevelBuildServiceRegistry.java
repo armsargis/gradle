@@ -22,6 +22,7 @@ import org.gradle.api.artifacts.Module;
 import org.gradle.api.internal.*;
 import org.gradle.api.internal.artifacts.DefaultModule;
 import org.gradle.api.internal.artifacts.DependencyManagementServices;
+import org.gradle.api.internal.artifacts.TopLevelDependencyManagementServices;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.classpath.ModuleRegistry;
 import org.gradle.api.internal.classpath.PluginModuleRegistry;
@@ -29,6 +30,7 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.IdentityFileResolver;
 import org.gradle.api.internal.initialization.DefaultScriptHandlerFactory;
 import org.gradle.api.internal.initialization.ScriptHandlerFactory;
+import org.gradle.api.internal.plugins.ResolveDeferredConfigurableAction;
 import org.gradle.api.internal.project.taskfactory.AnnotationProcessingTaskFactory;
 import org.gradle.api.internal.project.taskfactory.DependencyAutoWireTaskFactory;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
@@ -134,9 +136,12 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     }
 
     protected ProjectEvaluator createProjectEvaluator() {
-        return new LifecycleProjectEvaluator(
-                new BuildScriptProcessor(
-                        get(ScriptPluginFactory.class)));
+        ConfigureActionsProjectEvaluator withActionsEvaluator = new ConfigureActionsProjectEvaluator(
+                new BuildScriptProcessor(get(ScriptPluginFactory.class)),
+                new PluginsProjectConfigureActions(get(ClassLoaderRegistry.class).getPluginsClassLoader()),
+                new ResolveDeferredConfigurableAction()
+        );
+        return new LifecycleProjectEvaluator(withActionsEvaluator);
     }
 
     protected ITaskFactory createITaskFactory() {
@@ -190,8 +195,9 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
                 new ScriptEvaluatingSettingsProcessor(
                         get(ScriptPluginFactory.class),
                         new SettingsFactory(
-                                new DefaultProjectDescriptorRegistry(),
-                                get(Instantiator.class)
+
+                                get(Instantiator.class),
+                                this
                         ),
                         get(IGradlePropertiesLoader.class)),
                 get(IGradlePropertiesLoader.class));
@@ -240,14 +246,22 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
         if (domainObject instanceof GradleInternal) {
             return new GradleInternalServiceRegistry(this, (GradleInternal) domainObject);
         }
+        if (domainObject instanceof SettingsInternal) {
+            return new SettingsInternalServiceRegistry(this, (SettingsInternal) domainObject);
+        }
         throw new IllegalArgumentException(String.format("Cannot create services for unknown domain object of type %s.",
                 domainObject.getClass().getSimpleName()));
     }
 
     private class DependencyMetaDataProviderImpl implements DependencyMetaDataProvider {
-
         public Module getModule() {
             return new DefaultModule("unspecified", "unspecified", Project.DEFAULT_VERSION, Project.DEFAULT_STATUS);
         }
+    }
+
+    protected TopLevelDependencyManagementServices createGlobalDependencyManagementServices() {
+        ClassLoader coreImplClassLoader = get(ClassLoaderRegistry.class).getCoreImplClassLoader();
+        ServiceLocator serviceLocator = new ServiceLocator(coreImplClassLoader);
+        return serviceLocator.getFactory(TopLevelDependencyManagementServices.class).newInstance();
     }
 }

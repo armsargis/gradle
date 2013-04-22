@@ -16,7 +16,6 @@
 
 package org.gradle.api.publish.ivy.internal.publisher;
 
-import org.gradle.api.artifacts.Module;
 import org.gradle.api.publish.ivy.IvyArtifact;
 
 import java.io.File;
@@ -25,13 +24,13 @@ import java.util.Set;
 public class IvyNormalizedPublication {
 
     private final String name;
-    private final Module module;
+    private final IvyPublicationIdentity projectIdentity;
     private final File descriptorFile;
     private final Set<IvyArtifact> artifacts;
 
-    public IvyNormalizedPublication(String name, Module module, File descriptorFile, Set<IvyArtifact> artifacts) {
+    public IvyNormalizedPublication(String name, IvyPublicationIdentity projectIdentity, File descriptorFile, Set<IvyArtifact> artifacts) {
         this.name = name;
-        this.module = module;
+        this.projectIdentity = projectIdentity;
         this.artifacts = artifacts;
         this.descriptorFile = descriptorFile;
     }
@@ -40,8 +39,8 @@ public class IvyNormalizedPublication {
         return name;
     }
 
-    public Module getModule() {
-        return module;
+    public IvyPublicationIdentity getProjectIdentity() {
+        return projectIdentity;
     }
 
     public File getDescriptorFile() {

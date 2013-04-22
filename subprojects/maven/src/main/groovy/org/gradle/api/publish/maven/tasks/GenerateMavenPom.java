@@ -22,8 +22,8 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.publish.maven.MavenPom;
 import org.gradle.api.publish.maven.internal.tasks.MavenPomFileGenerator;
-import org.gradle.api.publish.maven.internal.MavenPomInternal;
-import org.gradle.api.publish.maven.internal.MavenProjectIdentity;
+import org.gradle.api.publish.maven.internal.publication.MavenPomInternal;
+import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
@@ -53,9 +53,9 @@ public class GenerateMavenPom extends DefaultTask {
     }
 
     /**
-     * The Maven pom.
+     * The Maven POM.
      *
-     * @return The Maven pom.
+     * @return The Maven POM.
      */
     public MavenPom getPom() {
         return pom;
@@ -66,9 +66,9 @@ public class GenerateMavenPom extends DefaultTask {
     }
 
     /**
-     * The file the pom will be written to.
+     * The file the POM will be written to.
      *
-     * @return The file the pom will be written to
+     * @return The file the POM will be written to
      */
     @OutputFile
     public File getDestination() {
@@ -91,18 +91,19 @@ public class GenerateMavenPom extends DefaultTask {
         MavenPomInternal pomInternal = (MavenPomInternal) getPom();
 
         MavenPomFileGenerator pomGenerator = new MavenPomFileGenerator();
-        copyIdentity(pomInternal.getProjectIdentity(), pomGenerator);
+        copyIdentity(pomInternal, pomGenerator);
         copyDependencies(pomInternal.getRuntimeDependencies(), pomGenerator);
         pomGenerator.withXml(pomInternal.getXmlAction());
 
         pomGenerator.writeTo(getDestination());
     }
 
-    private void copyIdentity(MavenProjectIdentity projectIdentity, MavenPomFileGenerator pom) {
+    private void copyIdentity(MavenPomInternal pomInternal, MavenPomFileGenerator pom) {
+        MavenProjectIdentity projectIdentity = pomInternal.getProjectIdentity();
         pom.setArtifactId(projectIdentity.getArtifactId());
         pom.setGroupId(projectIdentity.getGroupId());
         pom.setVersion(projectIdentity.getVersion());
-        pom.setPackaging(projectIdentity.getPackaging());
+        pom.setPackaging(pomInternal.getPackaging());
     }
 
     private void copyDependencies(Set<Dependency> runtimeDependencies, MavenPomFileGenerator pom) {

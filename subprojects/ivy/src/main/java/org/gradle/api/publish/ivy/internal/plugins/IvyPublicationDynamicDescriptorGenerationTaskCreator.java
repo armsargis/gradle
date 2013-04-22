@@ -21,7 +21,7 @@ import org.gradle.api.Project;
 import org.gradle.api.internal.ConventionMapping;
 import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.publish.PublicationContainer;
-import org.gradle.api.publish.ivy.internal.IvyPublicationInternal;
+import org.gradle.api.publish.ivy.internal.publication.IvyPublicationInternal;
 import org.gradle.api.publish.ivy.tasks.GenerateIvyDescriptor;
 
 import java.io.File;
@@ -49,7 +49,7 @@ public class IvyPublicationDynamicDescriptorGenerationTaskCreator {
         String publicationName = publication.getName();
 
         String descriptorTaskName = calculateDescriptorTaskName(publicationName);
-        GenerateIvyDescriptor descriptorTask = project.getTasks().add(descriptorTaskName, GenerateIvyDescriptor.class);
+        GenerateIvyDescriptor descriptorTask = project.getTasks().create(descriptorTaskName, GenerateIvyDescriptor.class);
         descriptorTask.setDescription(String.format("Generates the Ivy Module Descriptor XML file for publication '%s'.", publication.getName()));
         descriptorTask.setDescriptor(publication.getDescriptor());
 

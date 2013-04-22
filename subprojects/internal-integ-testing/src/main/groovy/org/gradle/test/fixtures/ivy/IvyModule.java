@@ -34,7 +34,7 @@ public interface IvyModule {
 
     IvyModule dependsOn(String organisation, String module, String revision);
 
-    IvyModule dependsOn(String organisation, String module, String revision, String conf);
+    IvyModule dependsOn(Map<String, String> attributes);
 
     IvyModule artifact(Map<String, ?> options);
 
@@ -49,4 +49,9 @@ public interface IvyModule {
     IvyModule publish();
 
     IvyDescriptor getIvy();
+
+    /**
+     * Assert that exactly the ivy.xml and jar file for this module, plus checksum files, have been published.
+     */
+    void assertIvyAndJarFilePublished();
 }

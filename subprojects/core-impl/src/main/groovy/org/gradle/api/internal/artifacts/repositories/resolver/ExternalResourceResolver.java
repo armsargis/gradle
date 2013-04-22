@@ -54,9 +54,10 @@ import org.apache.ivy.util.Message;
 import org.gradle.api.internal.artifacts.ivyservice.BuildableArtifactResolveResult;
 import org.gradle.api.internal.artifacts.ivyservice.ModuleVersionResolveException;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ArtifactResolveException;
-import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.BuildableModuleVersionDescriptor;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.BuildableModuleVersionMetaData;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleSource;
 import org.gradle.api.internal.artifacts.repositories.cachemanager.EnhancedArtifactDownloadReport;
+import org.gradle.api.internal.artifacts.repositories.cachemanager.RepositoryArtifactCache;
 import org.gradle.api.internal.externalresource.ExternalResource;
 import org.gradle.api.internal.externalresource.MetaDataOnlyExternalResource;
 import org.gradle.api.internal.externalresource.MissingExternalResource;
@@ -89,7 +90,7 @@ public class ExternalResourceResolver implements DependencyResolver {
     private LatestStrategy latestStrategy;
     private String latestStrategyName;
     private String cacheManagerName;
-    private RepositoryCacheManager repositoryCacheManager;
+    private RepositoryArtifactCache repositoryCacheManager;
     private String changingMatcherName;
     private String changingPattern;
     private Boolean checkmodified;
@@ -128,7 +129,7 @@ public class ExternalResourceResolver implements DependencyResolver {
     }
 
     public String toString() {
-        return getName();
+        return String.format("Repository '%s'", getName());
     }
 
     public void setSettings(ResolverSettings ivy) {
@@ -148,7 +149,7 @@ public class ExternalResourceResolver implements DependencyResolver {
         throw new UnsupportedOperationException();
     }
 
-    public void getDependency(DependencyDescriptor dependencyDescriptor, BuildableModuleVersionDescriptor result) {
+    public void getDependency(DependencyDescriptor dependencyDescriptor, BuildableModuleVersionMetaData result) {
         ModuleRevisionId nsMrid = dependencyDescriptor.getDependencyRevisionId();
 
         boolean isDynamic = getVersionMatcher().isDynamic(nsMrid);
@@ -817,7 +818,7 @@ public class ExternalResourceResolver implements DependencyResolver {
         this.changingMatcherName = changingMatcherName;
     }
 
-    protected String getChangingMatcherName() {
+    public String getChangingMatcherName() {
         return changingMatcherName;
     }
 
@@ -825,7 +826,7 @@ public class ExternalResourceResolver implements DependencyResolver {
         this.changingPattern = changingPattern;
     }
 
-    protected String getChangingPattern() {
+    public String getChangingPattern() {
         return changingPattern;
     }
 
@@ -833,11 +834,11 @@ public class ExternalResourceResolver implements DependencyResolver {
         checkmodified = Boolean.valueOf(check);
     }
 
-    public RepositoryCacheManager getRepositoryCacheManager() {
+    public RepositoryArtifactCache getRepositoryCacheManager() {
         return repositoryCacheManager;
     }
 
-    public void setRepositoryCacheManager(RepositoryCacheManager repositoryCacheManager) {
+    public void setRepositoryCacheManager(RepositoryArtifactCache repositoryCacheManager) {
         this.repositoryCacheManager = repositoryCacheManager;
     }
 

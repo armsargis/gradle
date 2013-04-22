@@ -16,11 +16,31 @@
 package org.gradle.plugins.ide.idea.model
 
 /**
- * Represents an orderEntry of type module-library in the iml xml.
+ * Represents an orderEntry of type module-library in the iml XML.
  *
  * @author Hans Dockter
  */
-class ModuleLibrary extends Library {
+class ModuleLibrary implements Dependency {
+    /**
+     * A set of Jar files or directories containing compiled code.
+     */
+    Set<Path> classes = [] as LinkedHashSet
+
+    /**
+     * A set of directories containing Jar files.
+     */
+    Set<JarDirectory> jarDirectories = [] as LinkedHashSet
+
+    /**
+     * A set of Jar files or directories containing Javadoc.
+     */
+    Set<Path> javadoc = [] as LinkedHashSet
+
+    /**
+     * A set of Jar files or directories containing source code.
+     */
+    Set<Path> sources = [] as LinkedHashSet
+
     /**
      * The scope of this library. If <tt>null</tt>, the scope attribute is not added.
      */

@@ -86,8 +86,10 @@ class IvyPublishDescriptorCustomisationIntegTest extends AbstractIntegrationSpec
         given:
         def moduleName = module.module
         buildFile << """
-            generateIvyModuleDescriptor {
-                destination = 'generated-ivy.xml'
+            publishing {
+                generateIvyModuleDescriptor {
+                    destination = 'generated-ivy.xml'
+                }
             }
         """
 
@@ -97,7 +99,7 @@ class IvyPublishDescriptorCustomisationIntegTest extends AbstractIntegrationSpec
         then:
         file('generated-ivy.xml').assertIsFile()
         IvyDescriptor ivy = new IvyDescriptor(file('generated-ivy.xml'))
-        ivy.artifacts[moduleName].hasAttributes("jar", "jar", ["runtime"])
+        ivy.expectArtifact(moduleName).hasAttributes("jar", "jar", ["runtime"])
         module.ivyFile.assertDoesNotExist()
     }
 
@@ -117,7 +119,7 @@ class IvyPublishDescriptorCustomisationIntegTest extends AbstractIntegrationSpec
         fails 'publish'
 
         then:
-        failure.assertHasDescription("Execution failed for task ':generateIvyModuleDescriptor'")
+        failure.assertHasDescription("Execution failed for task ':generateIvyModuleDescriptor'.")
         failure.assertHasCause("Could not apply withXml() to Ivy module descriptor")
         failure.assertHasCause("No such property: foo for class: groovy.util.Node")
     }
@@ -138,7 +140,7 @@ class IvyPublishDescriptorCustomisationIntegTest extends AbstractIntegrationSpec
         fails 'publish'
 
         then:
-        failure.assertHasDescription("Execution failed for task ':publishIvyPublicationToIvyRepository'")
+        failure.assertHasDescription("Execution failed for task ':publishIvyPublicationToIvyRepository'.")
         failure.assertHasCause("Failed to publish publication 'ivy' to repository 'ivy'")
         failure.assertHasCause("Invalid publication 'ivy': supplied revision does not match ivy descriptor (cannot edit revision directly in the ivy descriptor file).")
     }

@@ -19,6 +19,7 @@ package org.gradle.api.publish.ivy.internal.artifact;
 import org.gradle.api.internal.tasks.DefaultTaskDependency;
 import org.gradle.api.publish.ivy.IvyArtifact;
 import org.gradle.api.tasks.TaskDependency;
+import org.gradle.util.GUtil;
 
 import java.io.File;
 
@@ -37,7 +38,8 @@ public class DefaultIvyArtifact implements IvyArtifact {
 
         this.extension = extension;
         this.type = type;
-        this.classifier = classifier;
+        // Handle empty classifiers that come from PublishArtifact and AbstractArchiveTask
+        this.classifier = GUtil.elvis(classifier, null);
     }
 
     public File getFile() {
@@ -90,5 +92,10 @@ public class DefaultIvyArtifact implements IvyArtifact {
 
     public TaskDependency getBuildDependencies() {
         return buildDependencies;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("%s %s:%s:%s:%s", getClass().getSimpleName(), getName(), getType(), getExtension(), getClassifier());
     }
 }
